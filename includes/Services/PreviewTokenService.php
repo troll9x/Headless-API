@@ -279,7 +279,7 @@ final class PreviewTokenService implements Service {
 	}
 
 	private function base64url_encode( string $data ): string {
-		return rtrim( strtr( base64_encode( $data ), '+/=', '-_ ' ), '=' );
+		return rtrim( strtr( base64_encode( $data ), '+/', '-_' ), '=' );
 	}
 
 	private function base64url_decode( string $data ): string {
@@ -288,6 +288,7 @@ final class PreviewTokenService implements Service {
 			$padlen = 4 - $remainder;
 			$data .= str_repeat( '=', $padlen );
 		}
-		return base64_decode( strtr( $data, '-_', '+/' ) );
+		$decoded = base64_decode( strtr( $data, '-_', '+/' ), true );
+		return false === $decoded ? '' : $decoded;
 	}
 }

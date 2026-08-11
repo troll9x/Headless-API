@@ -51,6 +51,7 @@ require_once $i . 'PreviewLinkIntegration.php';
 		// ── 3.1. Share services used by Normalizers and Endpoints ─────────────────────────────
 		$s = $base . 'Services/';
 		require_once $s . 'UrlTransformer.php';
+		require_once $s . 'ContentTypeRegistry.php';
 		require_once $s . 'ContentResolver.php';
 		require_once $s . 'ArchiveResolver.php';
 		require_once $s . 'ArchiveService.php';
@@ -116,6 +117,7 @@ require_once $n . 'PreviewNormalizer.php';
 		require_once $ep . 'class-resolve.php';
 require_once $ep . 'class-archive.php';
 require_once $ep . 'class-term.php';
+		require_once $ep . 'class-content-types.php';
  require_once $ep . 'class-preview-token.php';
  require_once $ep . 'class-preview.php';
 	 require_once $ep . 'class-revalidation.php';

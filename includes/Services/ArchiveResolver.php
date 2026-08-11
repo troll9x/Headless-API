@@ -39,7 +39,7 @@ final class ArchiveResolver implements Service {
 		?PermalinkManagerIntegration $permalink_manager = null,
 		?UrlTransformer $url_transformer = null
 	) {
-		$this->polylang = $polylang;
+		$this->polylang = $polylang ?? new PolylangIntegration();
 		$this->permalink_manager = $permalink_manager;
 		$this->url_transformer = $url_transformer ?? new UrlTransformer();
 	}
@@ -80,7 +80,15 @@ final class ArchiveResolver implements Service {
 			);
 		}
 
-		$lang = $this->polylang ? $this->polylang->normalize_language( $query['lang'] ?? '' ) : '';
+		$requested_lang = trim( (string) ( $query['lang'] ?? '' ) );
+		$lang = $this->polylang->normalize_language( $requested_lang );
+		if ( '' !== $requested_lang && '' === $lang ) {
+			return new \WP_Error(
+				'headless_archive_invalid_language',
+				'Ngôn ngữ được yêu cầu không hợp lệ hoặc Polylang chưa hoạt động.',
+				[ 'status' => 400 ]
+			);
+		}
 
 		// Route to appropriate resolver
 		if ( $selectors['post_type'] ) {
@@ -191,7 +199,7 @@ final class ArchiveResolver implements Service {
 			}
 
 			// Try to get translated term
-			$translated_term_id = $this->polylang->get_translation_id( $term_obj->term_id, $term_lang );
+			$translated_term_id = $this->polylang->get_term_translation_id( $term_obj->term_id, $term_lang );
 			if ( $translated_term_id > 0 ) {
 				$translated_term = get_term( $translated_term_id, $taxonomy );
 				if ( $translated_term instanceof \WP_Term ) {
@@ -540,24 +548,7 @@ final class ArchiveResolver implements Service {
 	 * @return bool Whether taxonomy is valid.
 	 */
 	private function is_valid_public_taxonomy( \WP_Taxonomy $taxonomy_obj ): bool {
-		if ( ! $taxonomy_obj->public || ! $taxonomy_obj->publicly_queryable ) {
-			return false;
-		}
-
-		if ( ! $taxonomy_obj->show_in_rest ) {
-			return false;
-		}
-
-		// Must be associated with at least one public post type
-		$object_types = $taxonomy_obj->object_type;
-		$public_types = get_post_types( [ 'public' => true ] );
-		$has_public_type = array_intersect( $object_types, $public_types );
-
-		if ( empty( $has_public_type ) ) {
-			return false;
-		}
-
-		return true;
+		return ContentVisibility::is_taxonomy_public( $taxonomy_obj );
 	}
 
 	/**

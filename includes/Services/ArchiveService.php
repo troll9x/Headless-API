@@ -5,6 +5,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use TLU_Headless_API\Helpers\ContentVisibility;
+
 use TLU_Headless_API\Normalizers\ArchiveNormalizer;
 use TLU_Headless_API\Integrations\PolylangIntegration;
 use TLU_Headless_API\Cache\TransientCache;
@@ -31,7 +33,7 @@ class ArchiveService {
 		$this->archive_normalizer = $archive_normalizer ?? new ArchiveNormalizer();
 		$this->polylang = $polylang ?? new PolylangIntegration();
 		$this->cache = $cache ?? TransientCache::from_config();
-		$this->resolver = $resolver ?? new ArchiveResolver();
+		$this->resolver = $resolver ?? new ArchiveResolver( $this->polylang );
 	}
 
 	/**
@@ -124,6 +126,17 @@ class ArchiveService {
 	 * @return array|\WP_Error Archive response.
 	 */
 	public function get_archive( array $query, int $page = 1, int $per_page = 10 ): array|\WP_Error {
+		$requested_lang = trim( (string) ( $query['lang'] ?? '' ) );
+		$lang = $this->polylang->normalize_language( $requested_lang );
+		if ( '' !== $requested_lang && '' === $lang ) {
+			return new \WP_Error(
+				'headless_archive_invalid_language',
+				'Ngôn ngữ được yêu cầu không hợp lệ hoặc Polylang chưa hoạt động.',
+				[ 'status' => 400 ]
+			);
+		}
+		$query['lang'] = $lang;
+
 		$cache_key = $this->cache->make_key(
 			'archive',
 			$query['type'] ?? 'unknown',
@@ -132,6 +145,7 @@ class ArchiveService {
 			$query['term'] ?? '',
 			$query['author'] ?? '',
 			$query['year'] ?? '',
+			$lang,
 			(string) $page,
 			(string) $per_page
 		);
@@ -174,7 +188,7 @@ class ArchiveService {
 		$result = [];
 		foreach ( $post_types as $post_type ) {
 			$obj = get_post_type_object( $post_type );
-			if ( $obj ) {
+			if ( $obj && ContentVisibility::is_post_type_public( $obj ) ) {
 				$result[] = [
 					'name'  => $post_type,
 					'label' => $obj->label,
@@ -197,7 +211,7 @@ class ArchiveService {
 		$result = [];
 		foreach ( $taxonomies as $taxonomy ) {
 			$obj = get_taxonomy( $taxonomy );
-			if ( $obj && $obj->show_in_rest ) {
+			if ( $obj && ContentVisibility::is_taxonomy_public( $obj ) ) {
 				$result[] = [
 					'name'  => $taxonomy,
 					'label' => $obj->label,

@@ -39,9 +39,6 @@ class Plugin {
 	private function init_hooks(): void {
 		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
 
-		// CORS: thêm header dựa trên allowlist, không phản chiếu Origin tùy ý.
-		// Chạy cuối cùng để có thể loại bỏ header do WordPress/plugin khác thêm lại.
-
 		// Invalidation cache khi nội dung thay đổi.
 		add_action( 'save_post',                [ $this, 'on_post_change' ], 10, 2 );
 		add_action( 'deleted_post',             [ $this, 'on_post_change' ], 10, 2 );
@@ -76,10 +73,6 @@ class Plugin {
 		( new Rest_Service_Provider() )->register();
 	}
 
-	/**
-	 * CORS handler: chỉ thêm Access-Control-Allow-Origin khi Origin request
-	 * nằm trong danh sách allowed_domains. Không phản chiếu Origin tùy ý.
-	 */
 	/**
 	 * Flush toàn bộ cache khi post được lưu hoặc xóa.
 	 * Bỏ qua autosave và revision.

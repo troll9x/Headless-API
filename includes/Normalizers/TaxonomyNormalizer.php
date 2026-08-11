@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use TLU_Headless_API\Contracts\NormalizerInterface;
+use TLU_Headless_API\Integrations\PolylangIntegration;
 
 /**
  * Chuẩn hóa WP_Term hoặc giá trị ACF taxonomy field.
@@ -20,6 +21,12 @@ use TLU_Headless_API\Contracts\NormalizerInterface;
  * { id, name, slug, taxonomy, description, count, parent, link }
  */
 class TaxonomyNormalizer implements NormalizerInterface {
+
+	private PolylangIntegration $polylang;
+
+	public function __construct( ?PolylangIntegration $polylang = null ) {
+		$this->polylang = $polylang ?? new PolylangIntegration();
+	}
 
 	/** Luôn trả về mảng của mảng term — kể cả khi đầu vào là một term đơn. */
 	public function normalize( $value ): array {
@@ -66,6 +73,8 @@ class TaxonomyNormalizer implements NormalizerInterface {
 			'count'       => (int) $term->count,
 			'parent'      => (int) $term->parent,
 			'link'        => is_wp_error( $link ) ? '' : esc_url_raw( $link ),
+			'language'    => $this->polylang->get_term_language( (int) $term->term_id ),
+			'translations' => $this->polylang->get_term_translations( (int) $term->term_id ),
 		];
 	}
 }

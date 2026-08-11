@@ -81,10 +81,14 @@ final class CorsPolicy {
 			$port = '';
 		}
 
-		// Reject if contains user/pass, path, query or fragment
-		if ( ! empty( $parts['user'] ) || ! empty( $parts['pass'] ) || 
-		     ! empty( $parts['path'] ) || ! empty( $parts['query'] ) || 
-		     ! empty( $parts['fragment'] ) ) {
+		// Reject if contains user/pass, non-root path, query or fragment.
+		if (
+			! empty( $parts['user'] )
+			|| ! empty( $parts['pass'] )
+			|| ( isset( $parts['path'] ) && ! in_array( $parts['path'], [ '', '/' ], true ) )
+			|| ! empty( $parts['query'] )
+			|| ! empty( $parts['fragment'] )
+		) {
 			return '';
 		}
 
@@ -150,13 +154,8 @@ final class CorsPolicy {
 
 		// Privileged routes check
 		if ( $this->is_privileged_route( $request ) ) {
-			// Privileged routes require explicit opt-in via filter
-			$privileged_origins = apply_filters( 'headless_api_privileged_cors_origins', [] );
-			if ( ! is_array( $privileged_origins ) ) {
-				return false;
-			}
-			$privileged_origins = array_filter( array_map( [ $this, 'normalize_origin' ], $privileged_origins ) );
-			return in_array( $this->normalize_origin( $origin ), $privileged_origins, true );
+			// Privileged routes require explicit opt-in via filter.
+			return in_array( $this->normalize_origin( $origin ), $this->get_privileged_origins(), true );
 		}
 
 		return true;
@@ -171,19 +170,7 @@ final class CorsPolicy {
 	public function is_privileged_route( WP_REST_Request $request ): bool {
 		$route = $request->get_route();
 		
-		$privileged_patterns = [
-			'/preview-token',
-			'/revalidation',
-			'/cache',
-		];
-
-		foreach ( $privileged_patterns as $pattern ) {
-			if ( str_contains( $route, $pattern ) ) {
-				return true;
-			}
-		}
-
-		return false;
+		return (bool) preg_match( '#/(?:preview-token|revalidation|cache)(?:/|$)#', $route );
 	}
 
 	/**
@@ -243,10 +230,25 @@ final class CorsPolicy {
 
 		$headers = apply_filters( 'headless_api_cors_exposed_headers', $headers );
 		if ( ! is_array( $headers ) ) {
-			return $headers;
+			return [ 'ETag', 'Last-Modified', 'X-Headless-Schema', 'X-Headless-Cache' ];
 		}
 
-		return $headers;
+		return array_values( array_unique( array_filter( array_map( 'strval', $headers ) ) ) );
+	}
+
+	/** @return string[] */
+	private function get_privileged_origins(): array {
+		$origins = apply_filters( 'headless_api_privileged_cors_origins', [] );
+		if ( ! is_array( $origins ) ) {
+			return [];
+		}
+
+		$normalized = array_map(
+			fn( $origin ) => $this->normalize_origin( (string) $origin ),
+			$origins
+		);
+
+		return array_values( array_unique( array_filter( $normalized ) ) );
 	}
 
 	/**

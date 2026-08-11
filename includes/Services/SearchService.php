@@ -70,10 +70,11 @@ class SearchService {
 	private function dispatch_remote( string $route, array $params, bool $paginated ) {
 		$endpoint = str_ends_with( $route, '/suggest' ) ? '/suggest' : '/search';
 		$url      = add_query_arg( $params, Config::search_backend_url() . $endpoint );
-		$response = wp_remote_get( $url, [
-			'timeout'     => 8,
-			'redirection' => 2,
-			'headers'     => [ 'Accept' => 'application/json' ],
+		$response = wp_safe_remote_get( $url, [
+			'timeout'            => 8,
+			'redirection'         => 2,
+			'reject_unsafe_urls'  => true,
+			'headers'             => [ 'Accept' => 'application/json' ],
 		] );
 
 		if ( is_wp_error( $response ) ) {
@@ -115,10 +116,9 @@ class SearchService {
 			);
 		}
 
-		// Enforce fail-closed visibility only for search (paginated), not for suggest
-		if ( $paginated ) {
-			$data['items'] = $this->filter_public_results( $data['items'] );
-		}
+		// Both public endpoints must fail closed: items without a public post ID
+		// are not safe to expose, including autocomplete suggestions.
+		$data['items'] = $this->filter_public_results( $data['items'] );
 
 		return $data;
 	}

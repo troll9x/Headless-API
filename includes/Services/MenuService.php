@@ -40,6 +40,7 @@ class MenuService {
 	 * @return array|null        Null khi location không có menu gán vào.
 	 */
 	public function get_menu( string $location, string $lang = '' ): ?array {
+		$lang = $this->polylang->normalize_language( $lang );
 		$cache_key = $this->cache->make_key( 'menu', $location, $lang );
 		$cached    = $this->cache->get( $cache_key );
 		if ( null !== $cached ) {
@@ -65,6 +66,7 @@ class MenuService {
 	 * @return array|null
 	 */
 	public function get_menu_by_slug( string $slug, string $lang = '' ): ?array {
+		$lang = $this->polylang->normalize_language( $lang );
 		$cache_key = $this->cache->make_key( 'menu_slug', $slug, $lang );
 		$cached    = $this->cache->get( $cache_key );
 		if ( null !== $cached ) {
@@ -74,6 +76,18 @@ class MenuService {
 		$menu = wp_get_nav_menu_object( $slug );
 		if ( ! $menu || is_wp_error( $menu ) ) {
 			return null;
+		}
+
+		if ( '' !== $lang && $this->polylang->is_active() ) {
+			$translated_menu_id = $this->polylang->get_term_translation_id( (int) $menu->term_id, $lang );
+			if ( $translated_menu_id <= 0 ) {
+				return null;
+			}
+
+			$menu = wp_get_nav_menu_object( $translated_menu_id );
+			if ( ! $menu || is_wp_error( $menu ) ) {
+				return null;
+			}
 		}
 
 		$items = wp_get_nav_menu_items( $menu->term_id );

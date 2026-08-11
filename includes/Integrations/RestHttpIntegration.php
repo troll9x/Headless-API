@@ -21,7 +21,6 @@ final class RestHttpIntegration {
 	private CacheKeyBuilder $key_builder;
 	private TransientCache $cache;
 	private bool $enabled;
-	private string $backend;
 
 	public function __construct( ?CorsPolicy $cors = null, ?HttpCachePolicy $cache_policy = null, ?CacheVersionStore $versions = null, ?CacheKeyBuilder $key_builder = null, ?TransientCache $cache = null ) {
 		$this->cors        = $cors ?? new CorsPolicy();
@@ -30,11 +29,10 @@ final class RestHttpIntegration {
 		$this->key_builder = $key_builder ?? new CacheKeyBuilder( $this->versions, $this->cors );
 		$this->cache       = $cache ?? TransientCache::from_config();
 		$this->enabled     = $this->cache->enabled();
-		$this->backend     = $this->enabled ? ( wp_using_ext_object_cache() ? 'object-cache' : 'transient' ) : 'disabled';
 	}
 
 	public function register(): void {
-		// CORS: Chạy sau core, dùng filter cuối cùng
+		// CORS: only replace core headers for this plugin's routes.
 		add_filter( 'rest_pre_serve_request', [ $this, 'apply_cors_headers' ], PHP_INT_MAX, 4 );
 
 		// Cache: pre_dispatch để check cache
@@ -55,16 +53,10 @@ final class RestHttpIntegration {
 			return $served;
 		}
 
-		$origin = $this->get_request_origin();
-		if ( '' === $origin ) {
-			return $served;
-		}
+		$this->clear_cors_headers();
 
-		if ( ! $this->cors->is_cross_origin_allowed_for_request( $request, $origin ) ) {
-			foreach ( [ 'Access-Control-Allow-Origin', 'Access-Control-Allow-Credentials', 'Access-Control-Allow-Methods', 'Access-Control-Allow-Headers', 'Access-Control-Expose-Headers', 'Access-Control-Max-Age' ] as $header ) {
-				$response->remove_header( $header );
-				header_remove( $header );
-			}
+		$origin = $this->get_request_origin();
+		if ( '' === $origin || ! $this->cors->is_cross_origin_allowed_for_request( $request, $origin ) ) {
 			return $served;
 		}
 
@@ -74,11 +66,9 @@ final class RestHttpIntegration {
 		$response->header( 'Access-Control-Expose-Headers', implode( ', ', $this->cors->get_exposed_headers() ) );
 		$response->header( 'Access-Control-Max-Age', (string) $this->cors->get_preflight_max_age() );
 		$response->header( 'Vary', $this->get_vary_header( $response ) );
-		header( 'Access-Control-Allow-Origin: ' . $origin, true );
-		header( 'Access-Control-Allow-Methods: ' . implode( ', ', $this->cors->get_allowed_methods( $request ) ), true );
-		header( 'Access-Control-Allow-Headers: ' . implode( ', ', $this->cors->get_allowed_headers( $request ) ), true );
-		header( 'Access-Control-Allow-Credentials: true', true );
-		header( 'Vary: Origin', false );
+		if ( $this->cors->is_privileged_route( $request ) ) {
+			$response->header( 'Access-Control-Allow-Credentials', 'true' );
+		}
 
 		return $served;
 	}
@@ -107,9 +97,6 @@ final class RestHttpIntegration {
 
 			return $response;
 		}
-
-		$response = new WP_REST_Response();
-		$response->header( 'X-Headless-Cache', 'MISS' );
 
 		return $result;
 	}
@@ -151,8 +138,9 @@ final class RestHttpIntegration {
 			return $result;
 		}
 
-		$this->cache->set( $key, $entry, $ttl );
-		$response->header( 'X-Headless-Cache', 'STORED' );
+		if ( $this->cache->set( $key, $entry, $ttl ) ) {
+			$response->header( 'X-Headless-Cache', 'MISS' );
+		}
 
 		return $result;
 	}
@@ -228,6 +216,19 @@ final class RestHttpIntegration {
 			return $this->cors->normalize_origin( $origin );
 		}
 		return '';
+	}
+
+	private function clear_cors_headers(): void {
+		foreach ( [
+			'Access-Control-Allow-Origin',
+			'Access-Control-Allow-Credentials',
+			'Access-Control-Allow-Methods',
+			'Access-Control-Allow-Headers',
+			'Access-Control-Expose-Headers',
+			'Access-Control-Max-Age',
+		] as $header ) {
+			header_remove( $header );
+		}
 	}
 
 	private function get_vary_header( WP_REST_Response $response ): string {

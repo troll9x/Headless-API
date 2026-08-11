@@ -48,6 +48,12 @@ class TaxonomyService {
 	 * @return \WP_Term|null Term object hoặc null nếu không tìm thấy.
 	 */
 	public function get_term( string $taxonomy, string $term, string $lang = '' ) {
+		$requested_lang = trim( $lang );
+		$lang = $this->polylang->normalize_language( $requested_lang );
+		if ( '' !== $requested_lang && '' === $lang ) {
+			return null;
+		}
+
 		$term_obj = null;
 
 		if ( ctype_digit( $term ) ) {
@@ -62,16 +68,17 @@ class TaxonomyService {
 
 		// Handle Polylang translation
 		if ( '' !== $lang && $this->polylang->is_active() ) {
-			$lang = $this->polylang->normalize_language( $lang );
-			if ( '' !== $lang ) {
-				$translated_term_id = $this->polylang->get_translation_id( $term_obj->term_id, $lang );
-				if ( $translated_term_id > 0 ) {
-					$translated_term = get_term( $translated_term_id, $taxonomy );
-					if ( $translated_term instanceof \WP_Term ) {
-						$term_obj = $translated_term;
-					}
-				}
+			$translated_term_id = $this->polylang->get_term_translation_id( $term_obj->term_id, $lang );
+			if ( $translated_term_id <= 0 ) {
+				return null;
 			}
+
+			$translated_term = get_term( $translated_term_id, $taxonomy );
+			if ( ! $translated_term instanceof \WP_Term ) {
+				return null;
+			}
+
+			$term_obj = $translated_term;
 		}
 
 		return $term_obj;
@@ -88,6 +95,16 @@ class TaxonomyService {
 	 * @return array|null Term data hoặc null nếu không tìm thấy.
 	 */
 	public function get_term_data( string $taxonomy, string $term, string $lang = '', int $page = 1, int $per_page = 10 ): array {
+		$requested_lang = trim( $lang );
+		$lang = $this->polylang->normalize_language( $requested_lang );
+		if ( '' !== $requested_lang && '' === $lang ) {
+			return [
+				'error'   => 'headless_invalid_language',
+				'message' => 'Ngôn ngữ được yêu cầu không hợp lệ hoặc Polylang chưa hoạt động.',
+				'status'  => 400,
+			];
+		}
+
 		$cache_key = $this->cache->make_key( 'term', $taxonomy, $term, $lang, (string) $page, (string) $per_page );
 		$cached = $this->cache->get( $cache_key );
 
@@ -111,20 +128,8 @@ class TaxonomyService {
 			'parent'     => $term_obj->term_id,
 			'hide_empty' => false,
 			'number'     => 0,
+			'lang'       => $lang,
 		] );
-
-		// Get posts in this term
-		$args = [
-			'taxonomy'   => $taxonomy,
-			'term'       => $term_obj->slug,
-			'paged'      => $page,
-			'posts_per_page' => $per_page,
-			'post_status' => 'publish',
-		];
-
-		if ( '' !== $lang && $this->polylang->is_active() ) {
-			$args['lang'] = $lang;
-		}
 
 		// Build term data
 		$term_data = $this->term_normalizer->from_term( $term_obj );
@@ -220,11 +225,23 @@ class TaxonomyService {
 	 * @return array Danh sách terms.
 	 */
 	public function get_all_terms( string $taxonomy, string $lang = '', int $page = 1, int $per_page = 10 ): array {
+		$requested_lang = trim( $lang );
+		$lang = $this->polylang->normalize_language( $requested_lang );
+		if ( '' !== $requested_lang && '' === $lang ) {
+			return [
+				'error'   => 'headless_invalid_language',
+				'message' => 'Ngôn ngữ được yêu cầu không hợp lệ hoặc Polylang chưa hoạt động.',
+				'status'  => 400,
+			];
+		}
+
+		$page     = max( 1, $page );
+		$per_page = max( 1, $per_page );
 		$args = [
 			'taxonomy'     => $taxonomy,
 			'hide_empty'   => false,
 			'number'       => $per_page,
-			'paged'        => $page,
+			'offset'       => ( $page - 1 ) * $per_page,
 			'orderby'      => 'count',
 			'order'        => 'DESC',
 		];
@@ -243,7 +260,21 @@ class TaxonomyService {
 			];
 		}
 
-		$total_terms = wp_count_terms( $taxonomy );
+		$count_args = [
+			'taxonomy'   => $taxonomy,
+			'hide_empty' => false,
+		];
+		if ( '' !== $lang && $this->polylang->is_active() ) {
+			$count_args['lang'] = $lang;
+		}
+		$total_terms = wp_count_terms( $count_args );
+		if ( is_wp_error( $total_terms ) ) {
+			return [
+				'error'   => 'headless_terms_error',
+				'message' => $total_terms->get_error_message(),
+				'status'  => 500,
+			];
+		}
 		$total_pages = (int) ceil( $total_terms / $per_page );
 
 		return [

@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use TLU_Headless_API\Contracts\NormalizerInterface;
+use TLU_Headless_API\Integrations\PolylangIntegration;
 use TLU_Headless_API\Services\UrlTransformer;
 
 /**
@@ -22,9 +23,11 @@ use TLU_Headless_API\Services\UrlTransformer;
 class TermNormalizer implements NormalizerInterface {
 
 	private UrlTransformer $transformer;
+	private PolylangIntegration $polylang;
 
-	public function __construct( ?UrlTransformer $transformer = null ) {
+	public function __construct( ?UrlTransformer $transformer = null, ?PolylangIntegration $polylang = null ) {
 		$this->transformer = $transformer ?? new UrlTransformer();
+		$this->polylang    = $polylang ?? new PolylangIntegration();
 	}
 
 	/** Chấp nhận WP_Term, term ID, hoặc slug. */
@@ -85,7 +88,51 @@ class TermNormalizer implements NormalizerInterface {
 			'ancestors'   => $ancestors,
 			'children_count' => $children_count,
 			'meta'        => $this->get_term_meta( $term ),
+			'language'    => $this->build_language_metadata( $term ),
+			'translations' => $this->build_translations( $term ),
 		];
+	}
+
+	private function build_language_metadata( \WP_Term $term ): ?array {
+		if ( ! $this->polylang->is_active() ) {
+			return null;
+		}
+
+		$slug = $this->polylang->get_term_language( $term->term_id );
+		if ( '' === $slug ) {
+			return null;
+		}
+
+		foreach ( $this->polylang->get_languages() as $language ) {
+			if ( $language['slug'] === $slug ) {
+				return [
+					'slug'       => $language['slug'],
+					'locale'     => $language['locale'],
+					'name'       => $language['name'],
+					'is_default' => $language['is_default'],
+				];
+			}
+		}
+
+		return null;
+	}
+
+	private function build_translations( \WP_Term $term ): array {
+		if ( ! $this->polylang->is_active() ) {
+			return [];
+		}
+
+		$result = [];
+		foreach ( $this->polylang->get_term_translations( $term->term_id ) as $translation ) {
+			$result[] = [
+				'language' => $translation['language'],
+				'locale'   => $translation['locale'],
+				'id'       => $translation['id'],
+				'url'      => $this->transformer->transform_navigation_url( $translation['url'] ),
+			];
+		}
+
+		return $result;
 	}
 
 	/**

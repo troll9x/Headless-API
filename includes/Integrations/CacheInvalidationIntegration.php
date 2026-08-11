@@ -11,9 +11,11 @@ use WP_Term;
 
 final class CacheInvalidationIntegration {
 	private CacheVersionStore $versions;
+	private PolylangIntegration $polylang;
 
-	public function __construct( ?CacheVersionStore $versions = null ) {
+	public function __construct( ?CacheVersionStore $versions = null, ?PolylangIntegration $polylang = null ) {
 		$this->versions = $versions ?? new CacheVersionStore();
+		$this->polylang = $polylang ?? new PolylangIntegration();
 	}
 
 	public function register(): void {
@@ -124,8 +126,8 @@ final class CacheInvalidationIntegration {
 
 	private function get_post_domains( WP_Post $post ): array {
 		$domains = [ 'content', 'post_type:' . $post->post_type ];
-		
-		$lang = apply_filters( 'wpml_language_code', null );
+
+		$lang = $this->polylang->get_post_language( $post->ID );
 		if ( $lang ) {
 			$domains[] = 'language:' . $lang;
 		}

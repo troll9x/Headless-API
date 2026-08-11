@@ -38,7 +38,7 @@ final class ContentResolver implements Service {
 	) {
 		$this->permalink_manager = $permalink_manager;
 		$this->url_transformer   = $url_transformer ?? new UrlTransformer();
-		$this->polylang         = $polylang;
+		$this->polylang         = $polylang ?? new PolylangIntegration();
 	}
 
 	/**
@@ -54,13 +54,22 @@ final class ContentResolver implements Service {
 	 * @return array{language: string, path: string}|\WP_Error
 	 */
 	private function resolve_language_context( array $query ) {
-		$explicit_lang = $this->polylang ? $this->polylang->normalize_language( $query['lang'] ?? '' ) : '';
+		$requested_lang = trim( (string) ( $query['lang'] ?? '' ) );
+		$explicit_lang  = $this->polylang->normalize_language( $requested_lang );
+
+		if ( '' !== $requested_lang && '' === $explicit_lang ) {
+			return new \WP_Error(
+				'headless_invalid_language',
+				'Ngôn ngữ được yêu cầu không hợp lệ hoặc Polylang chưa hoạt động.',
+				[ 'status' => 400 ]
+			);
+		}
 		$path = $query['path'] ?? '';
 		$url = $query['url'] ?? '';
 
 		$prefix_context = [ 'language' => '', 'path' => $path ];
 
-		if ( $this->polylang && $this->polylang->is_active() ) {
+		if ( $this->polylang->is_active() ) {
 			if ( ! empty( $url ) ) {
 				$parsed = \wp_parse_url( $url );
 				$path_to_parse = $parsed['path'] ?? '';
@@ -91,7 +100,7 @@ final class ContentResolver implements Service {
 		if ( '' === $final_lang ) {
 			$final_lang = $prefix_lang;
 		}
-		if ( '' === $final_lang && $this->polylang && $this->polylang->is_active() ) {
+		if ( '' === $final_lang && $this->polylang->is_active() ) {
 			$final_lang = $this->polylang->get_current_language();
 			if ( '' === $final_lang ) {
 				$final_lang = $this->polylang->get_default_language();

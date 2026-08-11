@@ -185,6 +185,19 @@ class Schema {
 				],
 			],
 
+			"$h/content-types" => [
+				'description' => 'Danh sách Custom Post Type công khai, gồm archive, supports và taxonomy liên kết.',
+			],
+			"$h/content-types/(?P<post_type>[a-z0-9_-]+)" => [
+				'description' => 'Metadata của một Custom Post Type công khai.',
+			],
+			"$h/content-taxonomies" => [
+				'description' => 'Danh sách Custom Taxonomy công khai và các Content Type liên kết.',
+			],
+			"$h/content-taxonomies/(?P<taxonomy>[a-z0-9_-]+)" => [
+				'description' => 'Metadata của một Custom Taxonomy công khai.',
+			],
+
 			"$h/revalidation/status" => [
 				'description' => 'Trạng thái webhook revalidation (admin).',
 				'params'      => [],

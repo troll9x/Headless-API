@@ -39,14 +39,17 @@ class PolylangIntegration implements IntegrationInterface {
 			return [];
 		}
 
-		$langs = pll_languages_list( [ 'fields' => 'all' ] );
+		$slugs   = array_values( (array) pll_languages_list( [ 'fields' => 'slug' ] ) );
+		$locales = array_values( (array) pll_languages_list( [ 'fields' => 'locale' ] ) );
+		$names   = array_values( (array) pll_languages_list( [ 'fields' => 'name' ] ) );
 		$result = [];
 
-		foreach ( $langs as $slug => $data ) {
+		foreach ( $slugs as $index => $slug ) {
+			$slug = (string) $slug;
 			$result[] = [
-				'slug'       => (string) $slug,
-				'locale'     => (string) ( $data['locale'] ?? '' ),
-				'name'       => (string) ( $data['name'] ?? '' ),
+				'slug'       => $slug,
+				'locale'     => (string) ( $locales[ $index ] ?? '' ),
+				'name'       => (string) ( $names[ $index ] ?? '' ),
 				'home_url'   => function_exists( 'pll_home_url' ) ? esc_url_raw( pll_home_url( $slug ) ) : '',
 				'is_default' => ( $slug === $this->get_default_language() ),
 			];
@@ -121,6 +124,24 @@ class PolylangIntegration implements IntegrationInterface {
 		return (int) pll_get_post( $post_id, $language );
 	}
 
+	/** Trả về mã ngôn ngữ của term, hoặc '' khi Polylang không quản lý term đó. */
+	public function get_term_language( int $term_id ): string {
+		if ( ! $this->is_active() || ! function_exists( 'pll_get_term_language' ) ) {
+			return '';
+		}
+
+		return (string) pll_get_term_language( $term_id );
+	}
+
+	/** Lấy ID của bản dịch term cho một ngôn ngữ cụ thể. */
+	public function get_term_translation_id( int $term_id, string $language ): int {
+		if ( ! $this->is_active() || ! function_exists( 'pll_get_term' ) ) {
+			return 0;
+		}
+
+		return (int) pll_get_term( $term_id, $language );
+	}
+
 	/**
 	 * Trả về danh sách bản dịch công khai kèm metadata.
 	 *
@@ -159,6 +180,43 @@ class PolylangIntegration implements IntegrationInterface {
 		}
 
 		return apply_filters( 'headless_api_public_translations', $result, $post_id, $this );
+	}
+
+	/**
+	 * Trả về các bản dịch public của term, kèm metadata ổn định.
+	 *
+	 * @return array<int, array{language: string, locale: string, id: int, url: string}>
+	 */
+	public function get_term_translations( int $term_id ): array {
+		if ( ! $this->is_active() || ! function_exists( 'pll_get_term_translations' ) ) {
+			return [];
+		}
+
+		$translations = (array) pll_get_term_translations( $term_id );
+		$result       = [];
+		$langs_info   = $this->get_languages();
+
+		foreach ( $translations as $lang => $id ) {
+			$term = get_term( (int) $id );
+			if ( ! $term instanceof \WP_Term ) {
+				continue;
+			}
+
+			$taxonomy = get_taxonomy( $term->taxonomy );
+			if ( ! $taxonomy || empty( $taxonomy->public ) ) {
+				continue;
+			}
+
+			$link = get_term_link( $term );
+			$result[] = [
+				'language' => (string) $lang,
+				'locale'   => $this->locale_for_language( (string) $lang, $langs_info ),
+				'id'       => (int) $id,
+				'url'      => is_wp_error( $link ) ? '' : esc_url_raw( $link ),
+			];
+		}
+
+		return apply_filters( 'headless_api_public_term_translations', $result, $term_id, $this );
 	}
 
 	/** Tìm slug ngôn ngữ từ locale. */
@@ -214,7 +272,8 @@ class PolylangIntegration implements IntegrationInterface {
 	 * Trả về location key đã dịch, hoặc location gốc nếu Polylang không hoạt động.
 	 */
 	public function translated_menu_location( string $location, string $lang ): string {
-		if ( ! $this->is_active() || empty( $lang ) ) {
+		$lang = $this->normalize_language( $lang );
+		if ( ! $this->is_active() || '' === $lang ) {
 			return $location;
 		}
 		return $location . '____' . $lang;
@@ -224,6 +283,7 @@ class PolylangIntegration implements IntegrationInterface {
 	 * Chèn key 'lang' vào mảng args của WP_Query khi Polylang đang hoạt động.
 	 */
 	public function inject_lang_arg( array &$args, string $lang ): void {
+		$lang = $this->normalize_language( $lang );
 		if ( $this->is_active() && '' !== $lang ) {
 			$args['lang'] = $lang;
 		}
@@ -244,5 +304,16 @@ class PolylangIntegration implements IntegrationInterface {
 			}
 		}
 		return $posts[0];
+	}
+
+	/** @param array<int, array{slug: string, locale: string, name: string, home_url: string, is_default: bool}> $languages */
+	private function locale_for_language( string $language, array $languages ): string {
+		foreach ( $languages as $item ) {
+			if ( $item['slug'] === $language ) {
+				return $item['locale'];
+			}
+		}
+
+		return '';
 	}
 }

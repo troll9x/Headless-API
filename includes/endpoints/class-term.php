@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use TLU_Headless_API\Services\TaxonomyService;
+use TLU_Headless_API\Helpers\ContentVisibility;
 use WP_REST_Server;
 use WP_REST_Response;
 use WP_REST_Request;
@@ -70,7 +71,7 @@ class Term {
 
 		// Check if taxonomy exists
 		$obj = get_taxonomy( $taxonomy );
-		if ( ! $obj ) {
+		if ( ! $obj || ! ContentVisibility::is_taxonomy_public( $obj ) ) {
 			return new WP_REST_Response( [
 				'error'   => 'headless_taxonomy_not_found',
 				'message' => 'Taxonomy không tồn tại.',
@@ -80,7 +81,7 @@ class Term {
 
 		$result = $this->service->get_all_terms( $taxonomy, $lang, $page, $per_page );
 
-		return new WP_REST_Response( $result, 200 );
+		return new WP_REST_Response( $result, $result['status'] ?? 200 );
 	}
 
 	/**
@@ -98,7 +99,7 @@ class Term {
 
 		// Check if taxonomy exists
 		$obj = get_taxonomy( $taxonomy );
-		if ( ! $obj ) {
+		if ( ! $obj || ! ContentVisibility::is_taxonomy_public( $obj ) ) {
 			return new WP_REST_Response( [
 				'error'   => 'headless_taxonomy_not_found',
 				'message' => 'Taxonomy không tồn tại.',

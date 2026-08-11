@@ -49,6 +49,7 @@ class Rest_Service_Provider {
 			new Endpoints\Resolve(),
 			new Archive(),
 			new Term(),
+			new Endpoints\Content_Types(),
  			new PreviewToken(),
   			new Preview(),
   			new Revalidation(),

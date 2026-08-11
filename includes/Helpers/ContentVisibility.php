@@ -2,12 +2,63 @@
 
 namespace TLU_Headless_API\Helpers;
 
+use WP_Post_Type;
+use WP_Taxonomy;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Chính sách xác định nội dung có được công khai qua Headless API hay không.
  */
 final class ContentVisibility {
+
+	/**
+	 * Kiểm tra Custom Post Type có thể được công khai qua Headless API.
+	 *
+	 * @param string|WP_Post_Type $post_type Post type slug hoặc object.
+	 */
+	public static function is_post_type_public( $post_type ): bool {
+		$post_type_object = $post_type instanceof WP_Post_Type
+			? $post_type
+			: get_post_type_object( (string) $post_type );
+
+		if ( ! $post_type_object || self::is_post_type_internal( $post_type_object->name ) ) {
+			return false;
+		}
+
+		return ! empty( $post_type_object->public )
+			&& ! empty( $post_type_object->publicly_queryable );
+	}
+
+	/**
+	 * Kiểm tra Custom Taxonomy có thể được công khai qua Headless API.
+	 *
+	 * Taxonomy phải public, publicly queryable và gắn với ít nhất một
+	 * post type public. Không bắt buộc bật core WordPress REST API.
+	 *
+	 * @param string|WP_Taxonomy $taxonomy Taxonomy slug hoặc object.
+	 */
+	public static function is_taxonomy_public( $taxonomy ): bool {
+		$taxonomy_object = $taxonomy instanceof WP_Taxonomy
+			? $taxonomy
+			: get_taxonomy( (string) $taxonomy );
+
+		if (
+			! $taxonomy_object
+			|| empty( $taxonomy_object->public )
+			|| empty( $taxonomy_object->publicly_queryable )
+		) {
+			return false;
+		}
+
+		foreach ( (array) $taxonomy_object->object_type as $post_type ) {
+			if ( self::is_post_type_public( $post_type ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
 
 	/**
 	 * Kiểm tra một post có thể xuất hiện trong API public.
@@ -37,18 +88,7 @@ final class ContentVisibility {
 			return false;
 		}
 
-		if ( self::is_post_type_internal( (string) $post->post_type ) ) {
-			return false;
-		}
-
-		$post_type_object = get_post_type_object( $post->post_type );
-
-		if ( ! $post_type_object ) {
-			return false;
-		}
-
-		$is_public = ! empty( $post_type_object->public )
-			|| ! empty( $post_type_object->publicly_queryable );
+		$is_public = self::is_post_type_public( (string) $post->post_type );
 
 		/**
 		 * Cho phép điều chỉnh kết quả visibility.

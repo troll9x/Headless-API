@@ -7,7 +7,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use TLU_Headless_API\Response;
 use TLU_Headless_API\Services\SearchService;
-use TLU_Headless_API\Helpers\ContentVisibility;
 
 /** Public headless bridge for the custom WPX FULLTEXT search backend. */
 class Search {
@@ -48,10 +47,6 @@ class Search {
 
 		if ( is_wp_error( $result ) ) {
 			return $result;
-		}
-
-		if ( isset( $result['items'] ) && is_array( $result['items'] ) ) {
-			$result['items'] = $this->filter_public_results( $result['items'] );
 		}
 
 		return Response::success( $result );
@@ -98,56 +93,4 @@ class Search {
 		];
 	}
 
-	private function get_result_post_id( array $result ): int {
-		foreach ( [ 'id', 'ID', 'post_id', 'object_id' ] as $key ) {
-			if ( ! array_key_exists( $key, $result ) ) {
-				continue;
-			}
-
-			$value = $result[ $key ];
-
-			if ( is_int( $value ) && $value > 0 ) {
-				return $value;
-			}
-
-			if (
-				is_string( $value )
-				&& '' !== $value
-				&& ctype_digit( $value )
-			) {
-				return (int) $value;
-			}
-		}
-
-		return 0;
-	}
-
-	private function filter_public_results( array $items ): array {
-		$public = [];
-
-		foreach ( $items as $item ) {
-			if ( ! is_array( $item ) ) {
-				continue;
-			}
-
-			$post_id = $this->get_result_post_id( $item );
-
-			if ( $post_id <= 0 ) {
-				continue;
-			}
-
-			$post = \get_post( $post_id );
-
-			if (
-				! $post instanceof \WP_Post
-				|| ! ContentVisibility::is_post_public( $post )
-			) {
-				continue;
-			}
-
-			$public[] = $item;
-		}
-
-		return $public;
-	}
 }
