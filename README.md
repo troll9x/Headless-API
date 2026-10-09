@@ -60,6 +60,17 @@ Các field ACF Pro được chuẩn hóa để frontend luôn nhận đúng ki�
 
 Danh sách logo đối tác công khai có endpoint chuyên biệt `GET /wp-json/headless/v1/partner-logos?lang=vi`. Endpoint trả toàn bộ repeater `danh_sach_doi_tac` nhưng chỉ công khai `logo_cong_ty`, `link_doi_tac`, vị trí và số lượng; không mở toàn bộ ACF Options.
 
+### API snapshot trang chủ
+
+Frontend có thể tải các section nội dung chính bằng một request theo ngôn ngữ:
+
+```text
+GET /wp-json/headless/v1/homepage?lang=vi
+GET /wp-json/headless/v1/homepage?lang=en
+```
+
+Response thành công là object trực tiếp gồm `schema: 1`, `lang` và `data`; trong `data` có trang hero, thông báo, tin tức, sự kiện, tuyển sinh, bài nổi bật, đối tác, hợp tác, nghiên cứu, cộng đồng và khoảnh khắc. Route chỉ đọc nội dung đã xuất bản, chỉ chấp nhận `vi` hoặc `en`, và dùng cache nội dung công khai 300 giây qua cơ chế cache chung của plugin. Khi API cache bị tắt, request vẫn hoạt động nhưng cần đo lại tải PHP/DB trước khi triển khai rộng.
+
 - `text`, `textarea`, `email`, `wysiwyg` trả về chuỗi; email không hợp lệ trả về chuỗi rỗng.
 - `oembed` trả về `{ url, html }`; `html` đã được lọc an toàn và có thể rỗng nếu WordPress không tạo được embed.
 - `select`, `radio`, `button_group` trả về `{ value, label }`; `checkbox` và select nhiều lựa chọn trả về mảng các object cùng cấu trúc.
@@ -147,7 +158,7 @@ API cho template `taxonomy-loai-tai-lieu.php`:
 
 ## Phiên bản
 
-Phiên bản plugin hiện tại: **2.0.8**. Phiên bản schema API: **4.9**.
+Phiên bản plugin hiện tại: **2.1.0**. Phiên bản schema API: **5.0**.
 
 ### Di trú URL khỏi Permalink Manager Pro
 

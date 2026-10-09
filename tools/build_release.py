@@ -2,7 +2,7 @@
 
 Usage: python tools/build_release.py [output.zip]
 The unused 1.8.0 PermalinkManagerIntegration.php is retained in Git history and
-the working tree for audit, but is excluded from the 2.0.x runtime package.
+the working tree for audit, but is excluded from the 2.x runtime package.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "2.0.9"
+VERSION = "2.1.0"
 OUTPUT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "dist" / f"headless-api-{VERSION}.zip"
 ROOT_FILES = [ROOT / name for name in (".gitattributes", "CHANGELOG.md", "README.md", "headless-api.php")]
 EXCLUDED = {"includes/Integrations/PermalinkManagerIntegration.php"}

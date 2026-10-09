@@ -25,6 +25,7 @@ use TLU_Headless_API\Endpoints\Partner_Logos;
 use TLU_Headless_API\Endpoints\Priority_Posts;
 use TLU_Headless_API\Endpoints\Organizations;
 use TLU_Headless_API\Endpoints\Documents;
+use TLU_Headless_API\Endpoints\Homepage;
 
 /**
  * Đăng ký tất cả endpoint class với WordPress REST API.
@@ -60,6 +61,7 @@ class Rest_Service_Provider {
 			new Priority_Posts(),
 			new Organizations(),
 			new Documents(),
+			new Homepage(),
 			new PreviewToken(),
 			new Preview(),
 			new Revalidation(),

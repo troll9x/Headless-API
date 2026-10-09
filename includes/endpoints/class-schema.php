@@ -150,6 +150,18 @@ class Schema {
 				],
 			],
 
+			"$h/homepage" => [
+				'description' => 'One cached, language-specific snapshot of homepage content sections.',
+				'params'      => [
+					[ 'name' => 'lang', 'type' => 'string', 'required' => true, 'enum' => [ 'vi', 'en' ] ],
+				],
+				'responses'   => [
+					'200' => 'Homepage content snapshot for the requested locale.',
+					'400' => 'Unsupported locale.',
+					'503' => 'A required internal WordPress API request failed; response is not cached.',
+				],
+			],
+
 			"$h/menus" => [
 				'description' => 'Menu điều hướng dạng cây phân cấp.',
 				'params'      => [

@@ -101,6 +101,7 @@ require_once $n . 'PreviewNormalizer.php';
 		require_once $s . 'MediaGalleryService.php';
 		require_once $s . 'OrganizationService.php';
 		require_once $s . 'DocumentService.php';
+		require_once $s . 'HomepageSnapshotService.php';
 		// Note: ArchiveService and TaxonomyService are loaded above
 
 		// ── 7. Core ───────────────────────────────────────────────────────────
@@ -130,6 +131,7 @@ require_once $ep . 'class-term.php';
 		require_once $ep . 'class-priority-posts.php';
 		require_once $ep . 'class-organizations.php';
 		require_once $ep . 'class-documents.php';
+		require_once $ep . 'class-homepage.php';
  require_once $ep . 'class-preview-token.php';
  require_once $ep . 'class-preview.php';
 	 require_once $ep . 'class-revalidation.php';

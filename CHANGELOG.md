@@ -1,5 +1,10 @@
 # Nhật ký thay đổi
 
+## [2.1.0] - 2026-10-09 (release candidate; chưa triển khai CMS)
+
+- Add a read-only `GET /headless/v1/homepage?lang=vi|en` snapshot endpoint. It aggregates homepage page/post data through the in-process WordPress REST dispatcher so the frontend makes one content request per locale instead of many remote REST requests.
+- Keep locale validation strict and allow the shared public REST response cache to cache successful snapshots; errors are not cached.
+
 ## [2.0.9] - 2026-10-09 (release candidate; chưa triển khai CMS)
 
 - Gallery trang chủ giữ đủ ảnh đã chọn thuộc danh mục khác, miễn attachment là ảnh công khai có URL hợp lệ. Giữ thứ tự ảnh nổi bật tại vị trí thứ 7.
