@@ -1,5 +1,11 @@
 # Nhật ký thay đổi
 
+## [2.0.9] - 2026-10-09 (release candidate; chưa triển khai CMS)
+
+- Gallery trang chủ giữ đủ ảnh đã chọn thuộc danh mục khác, miễn attachment là ảnh công khai có URL hợp lệ. Giữ thứ tự ảnh nổi bật tại vị trí thứ 7.
+- Source và ZIP được tạo từ repository `Headless-API`; regression test `tests/gallery-selection.php` xác minh 15 ảnh và loại attachment không hợp lệ.
+- Schema JSON giữ phiên bản 4.9 vì cấu trúc response không thay đổi.
+
 ## [2.0.8] - 2026-10-07
 ### Changed
 - Add locale-aware search filtering and return stable frontend article paths independent of Permalink Manager.

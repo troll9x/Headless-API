@@ -3,7 +3,7 @@
  * Plugin Name: Headless API
  * Description: Bộ chuyển đổi REST API generic cho WordPress + ACF Pro + Polylang + Rank Math.
  * Plugin URI: https://nguyenhongson.vn/headless-api/
- * Version: 2.0.8
+ * Version: 2.0.9
  * Author: Nguyen Hong Son
  * Author URI: https://nguyenhongson.vn/
  * Update URI: https://nguyenhongson.vn/headless-api/
@@ -33,7 +33,7 @@ if (
 }
 
 // Phiên bản plugin — tăng mỗi khi có thay đổi giao diện API hoặc kiến trúc lớn.
-define( 'TLU_HEADLESS_API_VERSION',        '2.0.8' );
+define( 'TLU_HEADLESS_API_VERSION',        '2.0.9' );
 
 // Phiên bản schema JSON — tăng khi cấu trúc response thay đổi không tương thích.
 define( 'TLU_HEADLESS_API_SCHEMA_VERSION', '4.9' );

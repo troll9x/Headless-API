@@ -154,7 +154,9 @@ final class MediaGalleryService {
 		$selected = array_values(
 			array_filter(
 				$this->integration->get_selected_image_ids(),
-				fn( int $id ): bool => $this->is_image_in_category( $id, $term )
+				// The curated home selection may include an image outside the label category.
+				// Validate the attachment itself so all 15 selected public images survive.
+				fn( int $id ): bool => $this->is_public_image_attachment( $id )
 			)
 		);
 		$featured = $this->integration->get_featured_image_id();
@@ -322,6 +324,16 @@ final class MediaGalleryService {
 		}
 
 		return $data;
+	}
+
+	private function is_public_image_attachment( int $image_id ): bool {
+		$attachment = get_post( $image_id );
+
+		return $attachment instanceof \WP_Post
+			&& 'attachment' === $attachment->post_type
+			&& 'inherit' === $attachment->post_status
+			&& wp_attachment_is_image( $image_id )
+			&& (bool) wp_get_attachment_url( $image_id );
 	}
 
 	private function is_image_in_category( int $image_id, \WP_Term $term ): bool {
