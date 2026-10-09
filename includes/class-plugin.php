@@ -103,8 +103,7 @@ class Plugin {
 	/**
 	 * Allow only the dedicated public site options pages.
 	 *
-	 * Keep secrets and unrelated site settings on separate ACF options keys;
-	 * the generic options endpoint returns every field assigned to an allowed key.
+	 * The options endpoint additionally restricts individual public field names.
 	 *
 	 * @param string[] $keys Existing allowlisted options page keys.
 	 * @return string[]

@@ -1,0 +1,35 @@
+name: Headless API candidate checks
+
+on:
+  pull_request:
+  push:
+    branches: [release/tlu-headless-api-rc-2026-10-09]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v6.0.0
+        with:
+          python-version: '3.12'
+      - name: Lint PHP source and tests
+        run: |
+          php -l headless-api.php
+          find includes tests -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Regression tests
+        run: |
+          php tests/gallery-selection.php
+          php tests/options-public-fields.php
+      - name: Reproduce and verify release artifact
+        run: |
+          python tools/build_release.py /tmp/headless-api-2.0.9.zip
+          cmp /tmp/headless-api-2.0.9.zip dist/headless-api-2.0.9.zip
+          unzip -t dist/headless-api-2.0.9.zip

@@ -4,6 +4,7 @@
 
 - Gallery trang chủ giữ đủ ảnh đã chọn thuộc danh mục khác, miễn attachment là ảnh công khai có URL hợp lệ. Giữ thứ tự ảnh nổi bật tại vị trí thứ 7.
 - Source và ZIP được tạo từ repository `Headless-API`; regression test `tests/gallery-selection.php` xác minh 15 ảnh và loại attachment không hợp lệ.
+- API options chỉ normalize/trả về field name nằm trong allowlist công khai; transient cũ cũng được lọc trước khi phản hồi. `tests/options-public-fields.php` kiểm tra deny-by-default.
 - Schema JSON giữ phiên bản 4.9 vì cấu trúc response không thay đổi.
 
 ## [2.0.8] - 2026-10-07

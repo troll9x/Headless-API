@@ -12,10 +12,10 @@ use TLU_Headless_API\Integrations\AcfIntegration;
 /**
  * GET /headless/v1/options
  *
- * Trả về toàn bộ ACF field của một options page, đã chuẩn hóa theo field type.
+ * Trả về các ACF field được cho phép công khai của một options page.
  * Tham số `key` là ACF options page post_id (vd: 'options', 'global_settings').
  *
- * Bảo mật — Allowlist bắt buộc:
+ * Bảo mật — allowlist hai tầng: options page key và từng field name.
  * Mặc định KHÔNG có options page nào được phép truy cập công khai.
  * Dự án PHẢI khai báo rõ ràng từng key cho phép qua filter
  * `headless_api_allowed_options_pages` để tránh lộ secret ngoài ý muốn.

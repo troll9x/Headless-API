@@ -18,6 +18,15 @@ use TLU_Headless_API\Cache\TransientCache;
  * Plugin không tự switch ngôn ngữ — hook cho phép site-specific plugin làm điều đó.
  */
 class OptionsService {
+	/** Public top-level ACF fields. New fields remain private until explicitly reviewed. */
+	private const PUBLIC_FIELDS = [
+		'tlu_site_hero'    => [ 'hero_slides_vi', 'hero_slides_en' ],
+		'tlu_site_logo'    => [ 'logo_vi', 'logo_en', 'footer_logo_vi', 'footer_logo_en' ],
+		'tlu_site_footer'  => [ 'footer_about_links_vi', 'footer_about_links_en', 'footer_quick_links_vi', 'footer_quick_links_en', 'footer_address_vi', 'footer_address_en', 'footer_email', 'footer_phone', 'url_map' ],
+		'tlu_site_social'  => [ 'facebook_url', 'instagram_url', 'tiktok_url', 'youtube_url' ],
+		'tlu_site_favicon' => [ 'favicon' ],
+		'tlu_site_img'     => [ 'anh_tinh_vi', 'anh_tinh_en' ],
+	];
 
 	private AcfIntegration      $acf;
 	private PolylangIntegration $polylang;
@@ -49,17 +58,33 @@ class OptionsService {
 			return [];
 		}
 
+		$allowed_fields = $this->allowed_fields( $options_page_key );
+		if ( [] === $allowed_fields ) {
+			return [];
+		}
+
 		$cache_key = $this->cache->make_key( 'options', $options_page_key, $lang );
 		$cached    = $this->cache->get( $cache_key );
-		if ( null !== $cached ) {
-			return $cached;
+		if ( is_array( $cached ) ) {
+			// Older transients may predate the field allowlist; filter them too.
+			return array_intersect_key( $cached, array_fill_keys( $allowed_fields, true ) );
 		}
 
 		$this->maybe_switch_language( $lang );
 		try {
 			$field_objects = $this->acf->get_options_field_objects( $options_page_key );
-			$result        = ! empty( $field_objects )
-				? $this->normalizer->normalize_field_objects( $field_objects )
+			$public_fields = [];
+			foreach ( $field_objects as $field ) {
+				if ( ! is_array( $field ) ) {
+					continue;
+				}
+				$name = (string) ( $field['name'] ?? '' );
+				if ( in_array( $name, $allowed_fields, true ) ) {
+					$public_fields[ $name ] = $field;
+				}
+			}
+			$result = [] !== $public_fields
+				? $this->normalizer->normalize_field_objects( $public_fields )
 				: [];
 		} finally {
 			$this->maybe_restore_language( $lang );
@@ -70,6 +95,21 @@ class OptionsService {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Site-specific fields can be added only by explicit name via this filter.
+	 * Unknown options pages remain denied even when their page key is allowlisted.
+	 */
+	private function allowed_fields( string $options_page_key ): array {
+		$defaults = self::PUBLIC_FIELDS[ $options_page_key ] ?? [];
+		$fields   = apply_filters( 'headless_api_allowed_options_fields', $defaults, $options_page_key );
+		if ( ! is_array( $fields ) ) {
+			return [];
+		}
+		return array_values( array_unique( array_filter( $fields, static function ( $name ): bool {
+			return is_string( $name ) && 1 === preg_match( '/^[a-zA-Z][a-zA-Z0-9_]*$/', $name );
+		} ) ) );
 	}
 
 	// ── Private ───────────────────────────────────────────────────────────────
