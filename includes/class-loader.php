@@ -42,14 +42,15 @@ class Loader {
 
 		// ── 3. Integrations ───────────────────────────────────────────────────
 		$i = $base . 'Integrations/';
-require_once $i . 'PermalinkManagerIntegration.php';
 require_once $i . 'AcfIntegration.php';
 require_once $i . 'PolylangIntegration.php';
 require_once $i . 'RankMathIntegration.php';
+		require_once $i . 'MediaGalleryIntegration.php';
 require_once $i . 'PreviewLinkIntegration.php';
-		
+
 		// ── 3.1. Share services used by Normalizers and Endpoints ─────────────────────────────
 		$s = $base . 'Services/';
+		require_once $s . 'CanonicalUrlBuilder.php';
 		require_once $s . 'UrlTransformer.php';
 		require_once $s . 'ContentTypeRegistry.php';
 		require_once $s . 'ContentResolver.php';
@@ -65,8 +66,10 @@ require_once $i . 'PreviewLinkIntegration.php';
 	require_once $i . 'RevalidationHooksIntegration.php';
 	require_once $s . 'CorsPolicy.php';
 	require_once $s . 'HttpCachePolicy.php';
-	require_once $s . 'CacheVersionStore.php';
-	require_once $s . 'CacheKeyBuilder.php';
+		require_once $s . 'CacheVersionStore.php';
+		require_once $s . 'RevalidationConfig.php';
+		require_once $s . 'CacheKeyBuilder.php';
+		require_once $s . 'RateLimiter.php';
 	require_once $i . 'RestHttpIntegration.php';
 	require_once $i . 'CacheInvalidationIntegration.php';
 
@@ -95,10 +98,14 @@ require_once $n . 'PreviewNormalizer.php';
 		require_once $s . 'MenuService.php';
 		require_once $s . 'SeoService.php';
 		require_once $s . 'SearchService.php';
+		require_once $s . 'MediaGalleryService.php';
+		require_once $s . 'OrganizationService.php';
+		require_once $s . 'DocumentService.php';
 		// Note: ArchiveService and TaxonomyService are loaded above
 
 		// ── 7. Core ───────────────────────────────────────────────────────────
 		require_once $base . 'class-config.php';
+		require_once $base . 'class-upgrader.php';
 		require_once $base . 'class-helpers.php';
 		require_once $base . 'class-response.php';
 		require_once $base . 'class-rest-service-provider.php';
@@ -118,11 +125,16 @@ require_once $n . 'PreviewNormalizer.php';
 require_once $ep . 'class-archive.php';
 require_once $ep . 'class-term.php';
 		require_once $ep . 'class-content-types.php';
+		require_once $ep . 'class-media-gallery.php';
+		require_once $ep . 'class-partner-logos.php';
+		require_once $ep . 'class-priority-posts.php';
+		require_once $ep . 'class-organizations.php';
+		require_once $ep . 'class-documents.php';
  require_once $ep . 'class-preview-token.php';
  require_once $ep . 'class-preview.php';
 	 require_once $ep . 'class-revalidation.php';
 	 require_once $ep . 'class-cache.php';
- 	}
+	}
 
 	public function load_admin(): void {
 		$base = TLU_HEADLESS_API_PATH . 'includes/admin/';

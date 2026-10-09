@@ -36,15 +36,20 @@ class Page {
 	}
 
 	public function handle( \WP_REST_Request $request ) {
-		$slug      = $request->get_param( 'slug' );
+		$slug      = (string) ( $request->get_param( 'slug' ) ?? '' );
 		$lang      = $request->get_param( 'lang' );
 		$post_type = $request->get_param( 'post_type' );
+		$page      = (int) ( $request->get_param( 'page' ) ?? 1 );
+		$per_page  = (int) ( $request->get_param( 'per_page' ) ?? 10 );
 
-		$data = $this->service->get_page( $slug, $post_type, $lang );
-		if ( null === $data ) {
-			return Response::not_found(
-				sprintf( 'Không tìm thấy %s đã xuất bản có slug "%s".', $post_type, $slug )
-			);
+		if ( '' === $slug ) {
+			$data = $this->service->get_pages( $post_type, $lang, $page, $per_page );
+		} else {
+			$data = $this->service->get_page( $slug, $post_type, $lang );
+		}
+
+		if ( is_wp_error( $data ) ) {
+			return $data;
 		}
 
 		return Response::success( $data );
@@ -55,10 +60,10 @@ class Page {
 	private function get_args(): array {
 		return [
 			'slug'      => [
-				'required'          => true,
+				'required'          => false,
 				'sanitize_callback' => 'sanitize_title',
-				'validate_callback' => fn( $v ) => is_string( $v ) && strlen( trim( $v ) ) > 0 && strlen( $v ) <= 200,
-				'description'       => 'Post slug (post_name).',
+				'validate_callback' => fn( $v ) => is_string( $v ) && strlen( $v ) <= 200,
+				'description'       => 'Post slug. Bỏ trống để lấy danh sách theo post_type.',
 			],
 			'lang'      => [
 				'default'           => '',
@@ -73,6 +78,18 @@ class Page {
 				'sanitize_callback' => 'sanitize_key',
 				'validate_callback' => fn( $v ) => $this->is_valid_post_type( $v ),
 				'description'       => 'WordPress post type (phải là public).',
+			],
+			'page'      => [
+				'default'           => 1,
+				'sanitize_callback' => 'absint',
+				'validate_callback' => fn( $v ) => is_numeric( $v ) && (int) $v >= 1,
+				'description'       => 'Trang danh sách khi không truyền slug.',
+			],
+			'per_page'  => [
+				'default'           => 10,
+				'sanitize_callback' => 'absint',
+				'validate_callback' => fn( $v ) => is_numeric( $v ) && (int) $v >= 1 && (int) $v <= 100,
+				'description'       => 'Số item mỗi trang, tối đa 100.',
 			],
 		];
 	}

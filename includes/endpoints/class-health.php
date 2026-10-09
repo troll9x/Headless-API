@@ -8,15 +8,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Health {
 
 	public function register_routes() {
-		register_rest_route(
-			TLU_HEADLESS_API_NAMESPACE,
-			'/health',
-			[
-				'methods'             => \WP_REST_Server::READABLE,
-				'callback'            => [ $this, 'handle' ],
-				'permission_callback' => '__return_true',
-			]
-		);
+		foreach ( [ TLU_HEADLESS_API_NAMESPACE, HEADLESS_API_NAMESPACE ] as $namespace ) {
+			register_rest_route(
+				$namespace,
+				'/health',
+				[
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => [ $this, 'handle' ],
+					'permission_callback' => '__return_true',
+				]
+			);
+		}
 	}
 
 	public function handle( \WP_REST_Request $request ) {
@@ -24,8 +26,6 @@ class Health {
 			'ok'       => true,
 			'plugin'   => 'Headless API',
 			'version'  => TLU_HEADLESS_API_VERSION,
-			'site_url' => esc_url_raw( site_url() ),
-			'home_url' => esc_url_raw( home_url() ),
 		] );
 	}
 }

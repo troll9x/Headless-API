@@ -9,6 +9,7 @@ use TLU_Headless_API\Response;
 use TLU_Headless_API\Services\RevalidationEventBuilder;
 use TLU_Headless_API\Services\RevalidationQueue;
 use TLU_Headless_API\Services\RevalidationDispatcher;
+use TLU_Headless_API\Services\RevalidationConfig;
 
 /**
  * Admin endpoints cho quản lý revalidation webhook.
@@ -22,11 +23,13 @@ class Revalidation {
 	private RevalidationEventBuilder $builder;
 	private RevalidationQueue $queue;
 	private RevalidationDispatcher $dispatcher;
+	private RevalidationConfig $config;
 
-	public function __construct() {
+	public function __construct( ?RevalidationConfig $config = null ) {
+		$this->config = $config ?? new RevalidationConfig();
 		$this->builder = new RevalidationEventBuilder();
 		$this->queue   = new RevalidationQueue();
-		$this->dispatcher = new RevalidationDispatcher();
+		$this->dispatcher = new RevalidationDispatcher( null, $this->config );
 	}
 
 	public function register_routes(): void {
@@ -83,7 +86,11 @@ class Revalidation {
 		] );
 	}
 
-	public function handle_test( \WP_REST_Request $request ): \WP_REST_Response {
+	public function handle_test( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		if ( ! $this->config->is_configured() ) {
+			return Response::error( 'revalidation_not_configured', 'A valid HTTPS URL and non-empty secret are required.', 503 );
+		}
+
 		// Build và enqueue test event
 		$payload = $this->builder->build_test_event();
 		if ( ! $payload ) {
@@ -99,7 +106,11 @@ class Revalidation {
 		], 201 );
 	}
 
-	public function handle_retry( \WP_REST_Request $request ): \WP_REST_Response {
+	public function handle_retry( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
+		if ( ! $this->config->is_configured() ) {
+			return Response::error( 'revalidation_not_configured', 'A valid HTTPS URL and non-empty secret are required.', 503 );
+		}
+
 		$event_id = $request->get_param( 'event_id' );
 
 		// Tìm event trong history
@@ -127,15 +138,12 @@ class Revalidation {
 		}
 
 		// Reset attempts và enqueue lại
-		$payload['attempts'] = 0;
-		$payload['updated_at'] = time();
-
 		$this->queue->enqueue( $payload );
-		$this->queue->delete( $event_id );
 
 		return Response::success( [
 			'requeued'    => true,
-			'event_id'    => $event_id,
+			'event_id'    => $payload['event_id'],
+			'previous_event_id' => $event_id,
 			'queue_size'  => $this->queue->get_size(),
 		], 201 );
 	}
@@ -149,16 +157,7 @@ class Revalidation {
 	// ── Private Helpers ────────────────────────────────────────────────────────
 
 	private function is_configured(): bool {
-		// Check if URL and secret are configured
-		if ( defined( 'TLU_HEADLESS_REVALIDATION_URL' ) && TLU_HEADLESS_REVALIDATION_URL ) {
-			return true;
-		}
-		if ( defined( 'TLU_HEADLESS_REVALIDATION_SECRET' ) && TLU_HEADLESS_REVALIDATION_SECRET ) {
-			return true;
-		}
-
-		$options = \TLU_Headless_API\Config::options();
-		return ! empty( $options['revalidation_url'] ) && ! empty( $options['revalidation_secret'] );
+		return $this->config->is_configured();
 	}
 
 	private function get_last_delivery(): ?array {
@@ -179,15 +178,38 @@ class Revalidation {
 
 	private function build_payload_from_record( array $record ): ?array {
 		// Build minimal payload từ record
+		try {
+			$event_id = bin2hex( random_bytes( 16 ) );
+		} catch ( \Throwable $e ) {
+			return null;
+		}
+
+		$event = (string) ( $record['event'] ?? '' );
+		if ( '' === $event ) {
+			return null;
+		}
+
 		return [
-			'event_id' => $record['event_id'] ?? '',
-			'event' => $record['event'] ?? '',
+			'version' => 1,
+			'event_id' => $event_id,
+			'event' => $event,
+			'occurred_at' => time(),
+			'schema' => \TLU_HEADLESS_API_SCHEMA_VERSION,
+			'site' => [
+				'home' => esc_url_raw( home_url() ),
+				'frontend' => \TLU_Headless_API\Config::frontend_url(),
+			],
 			'entity' => [
 				'type' => $record['entity_type'] ?? '',
 				'id' => (int) ( $record['entity_id'] ?? 0 ),
 			],
+			'invalidate' => [
+				'paths' => array_values( array_slice( (array) ( $record['paths'] ?? [] ), 0, 100 ) ),
+				'tags' => array_values( array_slice( (array) ( $record['tags'] ?? [] ), 0, 100 ) ),
+			],
 			'context' => [
-				'causes' => [],
+				'causes' => [ 'manual_retry' ],
+				'previous_event_id' => (string) ( $record['event_id'] ?? '' ),
 			],
 		];
 	}

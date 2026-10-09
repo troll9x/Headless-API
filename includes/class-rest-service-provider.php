@@ -20,6 +20,11 @@ use TLU_Headless_API\Endpoints\PreviewToken;
 use TLU_Headless_API\Endpoints\Preview;
 use TLU_Headless_API\Endpoints\Revalidation;
 use TLU_Headless_API\Endpoints\Cache;
+use TLU_Headless_API\Endpoints\Media_Gallery;
+use TLU_Headless_API\Endpoints\Partner_Logos;
+use TLU_Headless_API\Endpoints\Priority_Posts;
+use TLU_Headless_API\Endpoints\Organizations;
+use TLU_Headless_API\Endpoints\Documents;
 
 /**
  * Đăng ký tất cả endpoint class với WordPress REST API.
@@ -50,11 +55,16 @@ class Rest_Service_Provider {
 			new Archive(),
 			new Term(),
 			new Endpoints\Content_Types(),
- 			new PreviewToken(),
-  			new Preview(),
-  			new Revalidation(),
-  			new Cache(),
-  		];
+			new Media_Gallery(),
+			new Partner_Logos(),
+			new Priority_Posts(),
+			new Organizations(),
+			new Documents(),
+			new PreviewToken(),
+			new Preview(),
+			new Revalidation(),
+			new Cache(),
+		];
 
 		foreach ( $endpoints as $endpoint ) {
 			$endpoint->register_routes();

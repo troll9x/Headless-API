@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use TLU_Headless_API\Contracts\NormalizerInterface;
+use TLU_Headless_API\Integrations\AcfIntegration;
 use TLU_Headless_API\Integrations\PolylangIntegration;
 use TLU_Headless_API\Services\UrlTransformer;
 
@@ -24,10 +25,19 @@ class TermNormalizer implements NormalizerInterface {
 
 	private UrlTransformer $transformer;
 	private PolylangIntegration $polylang;
+	private AcfIntegration $acf_integration;
+	private AcfNormalizer $acf_normalizer;
 
-	public function __construct( ?UrlTransformer $transformer = null, ?PolylangIntegration $polylang = null ) {
+	public function __construct(
+		?UrlTransformer $transformer = null,
+		?PolylangIntegration $polylang = null,
+		?AcfIntegration $acf_integration = null,
+		?AcfNormalizer $acf_normalizer = null
+	) {
 		$this->transformer = $transformer ?? new UrlTransformer();
 		$this->polylang    = $polylang ?? new PolylangIntegration();
+		$this->acf_integration = $acf_integration ?? new AcfIntegration();
+		$this->acf_normalizer = $acf_normalizer ?? new AcfNormalizer();
 	}
 
 	/** Chấp nhận WP_Term, term ID, hoặc slug. */
@@ -48,6 +58,7 @@ class TermNormalizer implements NormalizerInterface {
 	/** Tạo mảng từ WP_Term. */
 	public function from_term( \WP_Term $term ): array {
 		$term_link = get_term_link( $term );
+		$acf_fields = $this->get_acf_fields( $term );
 
 		// Build ancestors chain
 		$ancestors = [];
@@ -87,10 +98,16 @@ class TermNormalizer implements NormalizerInterface {
 			'hierarchical' => (bool) is_taxonomy_hierarchical( $term->taxonomy ),
 			'ancestors'   => $ancestors,
 			'children_count' => $children_count,
-			'meta'        => $this->get_term_meta( $term ),
+			'acf'         => $this->acf_normalizer->normalize_field_objects( $acf_fields ),
+			'meta'        => $this->get_term_meta( $term, array_keys( $acf_fields ) ),
 			'language'    => $this->build_language_metadata( $term ),
 			'translations' => $this->build_translations( $term ),
 		];
+	}
+
+	/** @return array<string,array> */
+	private function get_acf_fields( \WP_Term $term ): array {
+		return $this->acf_integration->get_term_field_objects( $term );
 	}
 
 	private function build_language_metadata( \WP_Term $term ): ?array {
@@ -141,7 +158,7 @@ class TermNormalizer implements NormalizerInterface {
 	 * @param \WP_Term $term Term object.
 	 * @return array Meta data.
 	 */
-	private function get_term_meta( \WP_Term $term ): array {
+	private function get_term_meta( \WP_Term $term, array $acf_field_names = [] ): array {
 		$meta = [];
 
 		// Get all term meta
@@ -149,7 +166,11 @@ class TermNormalizer implements NormalizerInterface {
 
 		foreach ( $term_meta as $key => $value ) {
 			// Skip internal/ Rank Math keys
-			if ( str_starts_with( $key, '_' ) || str_starts_with( $key, 'rank_math_' ) ) {
+			if (
+				str_starts_with( $key, '_' )
+				|| str_starts_with( $key, 'rank_math_' )
+				|| in_array( $key, $acf_field_names, true )
+			) {
 				continue;
 			}
 

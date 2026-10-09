@@ -24,7 +24,7 @@ class RelationshipNormalizer implements NormalizerInterface {
 	private PostNormalizer $posts;
 	private UrlTransformer $transformer;
 
-	public function __construct( PostNormalizer $posts = null, ?UrlTransformer $transformer = null ) {
+	public function __construct( ?PostNormalizer $posts = null, ?UrlTransformer $transformer = null ) {
 		$this->transformer = $transformer ?? new UrlTransformer();
 		$this->posts = $posts ?? new PostNormalizer( null, $this->transformer );
 	}

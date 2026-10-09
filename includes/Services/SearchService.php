@@ -19,15 +19,17 @@ class SearchService {
 	}
 
 	/** @return array|\WP_Error */
-	public function search( string $query, int $per = 8, int $page = 1 ) {
+	public function search( string $query, int $per = 8, int $page = 1, string $language = '' ) {
 		return $this->dispatch(
 			self::SEARCH_ROUTE,
 			[
 				'q'    => $query,
 				'per'  => min( 50, max( 1, $per ) ),
 				'page' => max( 1, $page ),
+				'lang' => in_array( $language, [ 'vi', 'en' ], true ) ? $language : '',
 			],
-			true
+			true,
+			$language
 		);
 	}
 
@@ -42,7 +44,7 @@ class SearchService {
 	 *
 	 * @return array|\WP_Error
 	 */
-	private function dispatch( string $route, array $params, bool $paginated ) {
+	private function dispatch( string $route, array $params, bool $paginated, string $language = '' ) {
 		if ( ! isset( rest_get_server()->get_routes()[ $route ] ) ) {
 			return $this->dispatch_remote( $route, $params, $paginated );
 		}
@@ -63,7 +65,7 @@ class SearchService {
 			);
 		}
 
-		return $this->validate_data( $response->get_data(), $paginated );
+		return $this->validate_data( $response->get_data(), $paginated, $language );
 	}
 
 	/** @return array|\WP_Error */
@@ -95,11 +97,11 @@ class SearchService {
 		}
 
 		$data = json_decode( (string) wp_remote_retrieve_body( $response ), true );
-		return $this->validate_data( $data, $paginated );
+		return $this->validate_data( $data, $paginated, (string) ( $params['lang'] ?? '' ) );
 	}
 
 	/** @return array|\WP_Error */
-	private function validate_data( $data, bool $paginated ) {
+	private function validate_data( $data, bool $paginated, string $language = '' ) {
 		if ( ! is_array( $data ) || ! isset( $data['items'] ) || ! is_array( $data['items'] ) ) {
 			return new \WP_Error(
 				'invalid_search_backend_response',
@@ -118,7 +120,7 @@ class SearchService {
 
 		// Both public endpoints must fail closed: items without a public post ID
 		// are not safe to expose, including autocomplete suggestions.
-		$data['items'] = $this->filter_public_results( $data['items'] );
+		$data['items'] = $this->filter_public_results( $data['items'], $language );
 
 		return $data;
 	}
@@ -129,7 +131,7 @@ class SearchService {
 	 * @param array $items
 	 * @return array
 	 */
-	private function filter_public_results( array $items ): array {
+	private function filter_public_results( array $items, string $language = '' ): array {
 		$public = [];
 
 		foreach ( $items as $item ) {
@@ -155,6 +157,23 @@ class SearchService {
 				|| ! ContentVisibility::is_post_public( $post )
 			) {
 				continue;
+			}
+
+			if ( '' !== $language && function_exists( 'pll_get_post_language' ) ) {
+				$post_language = (string) pll_get_post_language( $post->ID, 'slug' );
+				if ( $post_language !== $language ) {
+					continue;
+				}
+			}
+
+			// Search result URLs are a frontend contract. Do not expose the
+			// WordPress permalink because Permalink Manager Pro may generate it.
+			if ( 'post' === $post->post_type ) {
+				$post_language = function_exists( 'pll_get_post_language' )
+					? (string) pll_get_post_language( $post->ID, 'slug' )
+					: 'vi';
+				$item['url'] = CanonicalUrlBuilder::post_path( $post );
+				$item['language'] = $post_language;
 			}
 
 			$public[] = $item;

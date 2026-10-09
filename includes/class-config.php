@@ -12,6 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Không class nào khác cần biết tên hằng số thô hoặc chuỗi option key.
  */
 class Config {
+	private const RELEASE_DEFAULTS_OPTION = 'tlu_headless_api_200_hardening_applied';
 
 	public static function version(): string {
 		return TLU_HEADLESS_API_VERSION;
@@ -46,6 +47,34 @@ class Config {
 		return (array) \get_option( self::option_key(), [] );
 	}
 
+	/** Apply production-safe defaults once when the hardened 2.0.0 package boots. */
+	public static function apply_release_defaults(): void {
+		if ( get_option( self::RELEASE_DEFAULTS_OPTION, false ) ) {
+			return;
+		}
+
+		$options   = self::options();
+		$site_host = strtolower( (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST ) );
+		$is_tlu    = in_array( $site_host, [ 'tlu.edu.vn', 'www.tlu.edu.vn' ], true );
+		$changed   = false;
+
+		$frontend_host = strtolower( (string) wp_parse_url( (string) ( $options['frontend_url'] ?? '' ), PHP_URL_HOST ) );
+		if ( $is_tlu && ( '' === $frontend_host || in_array( $frontend_host, [ 'localhost', '127.0.0.1', '::1' ], true ) ) ) {
+			$options['frontend_url'] = 'https://tlu.edu.vn';
+			$changed = true;
+		}
+
+		if ( wp_using_ext_object_cache() && empty( $options['enable_cache'] ) ) {
+			$options['enable_cache'] = true;
+			$changed = true;
+		}
+
+		if ( $changed ) {
+			update_option( self::option_key(), $options, false );
+		}
+		update_option( self::RELEASE_DEFAULTS_OPTION, time(), false );
+	}
+
 	public static function cache_enabled(): bool {
 		return (bool) ( self::options()['enable_cache'] ?? false );
 	}
@@ -56,7 +85,16 @@ class Config {
 	}
 
 	public static function frontend_url(): string {
-		return esc_url_raw( self::options()['frontend_url'] ?? 'http://localhost:3000' );
+		$url = esc_url_raw( self::options()['frontend_url'] ?? 'https://tlu.edu.vn' );
+		$host = strtolower( (string) wp_parse_url( $url, PHP_URL_HOST ) );
+		$site_host = strtolower( (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST ) );
+		if (
+			in_array( $host, [ 'localhost', '127.0.0.1', '::1' ], true )
+			&& in_array( $site_host, [ 'tlu.edu.vn', 'www.tlu.edu.vn' ], true )
+		) {
+			$url = 'https://tlu.edu.vn';
+		}
+		return untrailingslashit( $url ?: 'https://tlu.edu.vn' );
 	}
 
 	/** URL gốc của WPX FULLTEXT API khi search plugin nằm trên CMS khác. */
@@ -89,7 +127,10 @@ class Config {
 		if ( ! is_array( $parts ) || empty( $parts['scheme'] ) || empty( $parts['host'] ) ) {
 			return '';
 		}
-		if ( ! in_array( strtolower( $parts['scheme'] ), [ 'http', 'https' ], true ) ) {
+		$scheme = strtolower( $parts['scheme'] );
+		$host   = strtolower( $parts['host'] );
+		$is_local = in_array( $host, [ 'localhost', '127.0.0.1', '::1' ], true );
+		if ( 'https' !== $scheme && ! ( 'http' === $scheme && $is_local ) ) {
 			return '';
 		}
 		if ( ! empty( $parts['user'] ) || ! empty( $parts['pass'] ) || ! empty( $parts['query'] ) || ! empty( $parts['fragment'] ) ) {
@@ -99,7 +140,7 @@ class Config {
 			return '';
 		}
 
-		$normalized = strtolower( $parts['scheme'] ) . '://' . strtolower( $parts['host'] );
+		$normalized = $scheme . '://' . $host;
 		if ( isset( $parts['port'] ) ) {
 			$normalized .= ':' . (int) $parts['port'];
 		}

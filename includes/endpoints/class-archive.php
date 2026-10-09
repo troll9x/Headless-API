@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use TLU_Headless_API\Services\ArchiveService;
+use TLU_Headless_API\Services\RateLimiter;
 use WP_REST_Server;
 use WP_REST_Response;
 use WP_REST_Request;
@@ -29,9 +30,11 @@ use WP_REST_Request;
 class Archive {
 
 	private ArchiveService $service;
+	private RateLimiter $limiter;
 
-	public function __construct( ?ArchiveService $service = null ) {
+	public function __construct( ?ArchiveService $service = null, ?RateLimiter $limiter = null ) {
 		$this->service = $service ?? new ArchiveService();
+		$this->limiter = $limiter ?? new RateLimiter();
 	}
 
 	/**
@@ -71,6 +74,20 @@ class Archive {
 	 * @return WP_REST_Response|WP_Error Response object or error.
 	 */
 	public function get_items( WP_REST_Request $request ) {
+		$limit = (int) apply_filters( 'headless_api_archive_rate_limit', 120 );
+		$state = $this->limiter->consume( $request, 'archive', $limit, 60 );
+		if ( ! $state['allowed'] ) {
+			$response = new WP_REST_Response( [
+				'code' => 'rate_limit_exceeded',
+				'message' => 'Too many requests.',
+			], 429 );
+			$response->header( 'Retry-After', (string) $state['retry_after'] );
+			$response->header( 'RateLimit-Limit', (string) $state['limit'] );
+			$response->header( 'RateLimit-Remaining', '0' );
+			$response->header( 'RateLimit-Reset', (string) $state['reset'] );
+			return $response;
+		}
+
 		$params = $request->get_query_params();
 
 		// Determine selector type
@@ -171,8 +188,10 @@ class Archive {
 			],
 			'author'    => [
 				'description'       => 'Author ID or nicename',
-				'type'              => 'mixed',
+				'type'              => [ 'integer', 'string' ],
 				'required'          => false,
+				'sanitize_callback' => static fn( $value ) => is_numeric( $value ) ? absint( $value ) : sanitize_title( (string) $value ),
+				'validate_callback' => static fn( $value ) => ( is_numeric( $value ) && (int) $value > 0 ) || ( is_string( $value ) && strlen( $value ) <= 60 ),
 			],
 			'year'      => [
 				'description'       => 'Year (4 digits)',
@@ -199,17 +218,23 @@ class Archive {
 				'description'       => 'Path to resolve',
 				'type'              => 'string',
 				'required'          => false,
+				'sanitize_callback' => static fn( $value ) => '/' . ltrim( sanitize_text_field( (string) $value ), '/' ),
+				'validate_callback' => static fn( $value ) => is_string( $value ) && strlen( $value ) <= 2048 && false === strpos( $value, "\0" ) && false === strpos( $value, '..' ),
 			],
 			'url'       => [
 				'description'       => 'URL to resolve',
 				'type'              => 'string',
 				'required'          => false,
 				'format'            => 'uri',
+				'sanitize_callback' => 'esc_url_raw',
+				'validate_callback' => static fn( $value ) => is_string( $value ) && strlen( $value ) <= 2048 && in_array( strtolower( (string) wp_parse_url( $value, PHP_URL_SCHEME ) ), [ 'http', 'https' ], true ),
 			],
 			'lang'      => [
 				'description'       => 'Language slug',
 				'type'              => 'string',
 				'required'          => false,
+				'sanitize_callback' => 'sanitize_key',
+				'validate_callback' => static fn( $value ) => is_string( $value ) && ( '' === $value || 1 === preg_match( '/^[a-z]{2,8}(?:-[a-z0-9]{2,8})?$/i', $value ) ),
 			],
 			'page'      => [
 				'description'       => 'Page number',
@@ -217,6 +242,7 @@ class Archive {
 				'required'          => false,
 				'default'           => 1,
 				'minimum'           => 1,
+				'maximum'           => 10000,
 			],
 			'per_page'  => [
 				'description'       => 'Posts per page',

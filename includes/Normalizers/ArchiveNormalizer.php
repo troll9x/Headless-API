@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use TLU_Headless_API\Contracts\NormalizerInterface;
+use TLU_Headless_API\Integrations\AcfIntegration;
 use TLU_Headless_API\Services\UrlTransformer;
 
 /**
@@ -39,15 +40,21 @@ class ArchiveNormalizer implements NormalizerInterface {
 	private PostNormalizer $post_normalizer;
 	private TermNormalizer $term_normalizer;
 	private UrlTransformer $transformer;
+	private AcfIntegration $acf_integration;
+	private AcfNormalizer $acf_normalizer;
 
 	public function __construct(
 		?PostNormalizer $post_normalizer = null,
 		?TermNormalizer $term_normalizer = null,
-		?UrlTransformer $transformer = null
+		?UrlTransformer $transformer = null,
+		?AcfIntegration $acf_integration = null,
+		?AcfNormalizer $acf_normalizer = null
 	) {
 		$this->post_normalizer = $post_normalizer ?? new PostNormalizer();
 		$this->term_normalizer = $term_normalizer ?? new TermNormalizer();
 		$this->transformer = $transformer ?? new UrlTransformer();
+		$this->acf_integration = $acf_integration ?? new AcfIntegration();
+		$this->acf_normalizer = $acf_normalizer ?? new AcfNormalizer();
 	}
 
 	/** Chấp nhận archive context array hoặc WP_Post. */
@@ -110,14 +117,24 @@ class ArchiveNormalizer implements NormalizerInterface {
 			'slug'           => $post->post_name,
 			'title'          => get_the_title( $post ),
 			'excerpt'        => wp_strip_all_tags( get_the_excerpt( $post ) ),
-			'link'           => $this->transformer->transform_navigation_url( get_permalink( $post ) ),
+			'link'           => 'post' === $post->post_type
+				? \TLU_Headless_API\Services\CanonicalUrlBuilder::post_url( $post )
+				: $this->transformer->transform_navigation_url( get_permalink( $post ) ),
+			'canonical_path' => 'post' === $post->post_type ? \TLU_Headless_API\Services\CanonicalUrlBuilder::post_path( $post ) : '',
 			'type'           => $post->post_type,
 			'date'           => $post->post_date,
 			'modified'       => $post->post_modified,
 			'featured_image' => $this->get_post_featured_image( $post ),
 			'author'         => $this->get_post_author( $post ),
 			'terms'          => $this->get_post_terms( $post ),
+			'acf'            => $this->get_post_acf( $post ),
 		];
+	}
+
+	private function get_post_acf( \WP_Post $post ): array {
+		$fields = $this->acf_integration->get_field_objects( (int) $post->ID );
+
+		return $this->acf_normalizer->normalize_field_objects( $fields );
 	}
 
 	/**

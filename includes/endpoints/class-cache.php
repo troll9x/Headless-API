@@ -52,7 +52,12 @@ final class Cache {
 
 	public function get_status( WP_REST_Request $request ): WP_REST_Response {
 		$enabled = function_exists( 'get_transient' );
-		$backend = $enabled ? ( wp_using_ext_object_cache() ? 'object-cache' : 'transient' ) : 'disabled';
+		$backend = 'disabled';
+		if ( $enabled ) {
+			$backend = wp_using_ext_object_cache()
+				? ( defined( 'WP_REDIS_CLIENT' ) ? 'redis' : 'object-cache' )
+				: 'transient';
+		}
 
 		$generations = $this->versions->get_many( $this->versions->get_all_domains() );
 		ksort( $generations );

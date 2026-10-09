@@ -46,7 +46,7 @@ final class CacheKeyBuilder {
 
 		$allowed = [
 			'lang', 'slug', 'id', 'path', 'url', 'post_type', 'type', 'taxonomy', 'location',
-			'key', 'q', 'per', 'page', '_fields', '_embed', '_context',
+			'key', 'q', 'per', 'per_page', 'page', 'order', '_fields', '_embed', '_context',
 		];
 		$allowed = array_merge( $allowed, (array) apply_filters( 'headless_api_cache_allowed_query_args', [] ) );
 

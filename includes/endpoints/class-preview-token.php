@@ -70,7 +70,7 @@ class PreviewToken {
 					'token' => [
 						'required'          => true,
 						'sanitize_callback' => 'sanitize_text_field',
-						'validate_callback' => fn( $v ) => is_string( $v ) && strlen( $v ) > 10,
+						'validate_callback' => fn( $v ) => is_string( $v ) && strlen( $v ) > 10 && strlen( $v ) <= 4096,
 						'description'       => 'Token cần thu hồi.',
 					],
 				],
@@ -78,7 +78,7 @@ class PreviewToken {
 		);
 	}
 
-	public function handle_issue( \WP_REST_Request $request ): \WP_REST_Response {
+	public function handle_issue( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		$post_id   = (int) $request->get_param( 'post_id' );
 		$source    = $request->get_param( 'source' );
 		$source_id = (int) $request->get_param( 'source_id' );
@@ -93,7 +93,7 @@ class PreviewToken {
 		return Response::success( $result, 201 );
 	}
 
-	public function handle_revoke( \WP_REST_Request $request ): \WP_REST_Response {
+	public function handle_revoke( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		$token = $request->get_param( 'token' );
 		$success = $this->service->revoke_preview_token( $token );
 		if ( is_wp_error( $success ) ) {
@@ -102,17 +102,13 @@ class PreviewToken {
 		return Response::success( [ 'revoked' => true ] );
 	}
 
-	public function permission_issue(): bool {
-		if ( ! is_user_logged_in() ) {
-			return false;
-		}
-		return true;
+	public function permission_issue( \WP_REST_Request $request ): bool {
+		$post_id = (int) $request->get_param( 'post_id' );
+		return is_user_logged_in() && $post_id > 0 && current_user_can( 'edit_post', $post_id );
 	}
 
-	public function permission_revoke(): bool {
-		if ( ! is_user_logged_in() ) {
-			return false;
-		}
-		return true;
+	public function permission_revoke( \WP_REST_Request $request ): bool {
+		$token = (string) $request->get_param( 'token' );
+		return is_user_logged_in() && $this->service->can_revoke_preview_token( $token );
 	}
 }

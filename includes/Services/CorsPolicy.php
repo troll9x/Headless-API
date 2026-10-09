@@ -10,7 +10,7 @@ use WP_REST_Request;
 
 /**
  * Quản lý chính sách CORS cho Headless API.
- * 
+ *
  * Đảm bảo chỉ các origin hợp lệ trong allowlist được phép truy cập
  * và chỉ áp dụng cho các namespace của plugin.
  */
@@ -18,7 +18,7 @@ final class CorsPolicy {
 
 	/**
 	 * Kiểm tra xem một route có thuộc quản lý của plugin hay không.
-	 * 
+	 *
 	 * @param string $route Route từ $request->get_route().
 	 * @return bool
 	 */
@@ -47,7 +47,7 @@ final class CorsPolicy {
 
 	/**
 	 * Normalize origin về dạng scheme://host[:port]
-	 * 
+	 *
 	 * @param string $origin
 	 * @return string
 	 */
@@ -71,7 +71,7 @@ final class CorsPolicy {
 
 		// Bỏ default port
 		if ( isset( $parts['port'] ) ) {
-			if ( ( 'http' === $scheme && 80 === (int)$parts['port'] ) || 
+			if ( ( 'http' === $scheme && 80 === (int)$parts['port'] ) ||
 			     ( 'https' === $scheme && 443 === (int)$parts['port'] ) ) {
 				$port = '';
 			} else {
@@ -97,12 +97,12 @@ final class CorsPolicy {
 
 	/**
 	 * Lấy danh sách allowed origins từ Config và filter.
-	 * 
+	 *
 	 * @return string[]
 	 */
 	public function get_allowed_origins(): array {
 		$origins = Config::allowed_origins();
-		
+
 		// Apply filter
 		$origins = apply_filters( 'headless_api_allowed_origins', $origins );
 		if ( ! is_array( $origins ) ) {
@@ -123,7 +123,7 @@ final class CorsPolicy {
 
 	/**
 	 * Kiểm tra origin có được phép hay không.
-	 * 
+	 *
 	 * @param string $origin
 	 * @return bool
 	 */
@@ -138,7 +138,7 @@ final class CorsPolicy {
 
 	/**
 	 * Kiểm tra xem request có được phép cross-origin hay không.
-	 * 
+	 *
 	 * @param WP_REST_Request $request
 	 * @param string $origin
 	 * @return bool
@@ -163,25 +163,25 @@ final class CorsPolicy {
 
 	/**
 	 * Xác định route có phải là privileged (cần bảo mật cao hơn) hay không.
-	 * 
+	 *
 	 * @param WP_REST_Request $request
 	 * @return bool
 	 */
 	public function is_privileged_route( WP_REST_Request $request ): bool {
 		$route = $request->get_route();
-		
+
 		return (bool) preg_match( '#/(?:preview-token|revalidation|cache)(?:/|$)#', $route );
 	}
 
 	/**
 	 * Lấy danh sách methods được cho phép cho request.
-	 * 
+	 *
 	 * @param WP_REST_Request $request
 	 * @return string[]
 	 */
 	public function get_allowed_methods( WP_REST_Request $request ): array {
 		$route = $request->get_route();
-		
+
 		// Admin mutation routes
 		if ( $this->is_privileged_route( $request ) ) {
 			return [ 'GET', 'HEAD', 'POST', 'OPTIONS' ];
@@ -193,7 +193,7 @@ final class CorsPolicy {
 
 	/**
 	 * Lấy danh sách headers được cho phép.
-	 * 
+	 *
 	 * @param WP_REST_Request $request
 	 * @return string[]
 	 */
@@ -217,7 +217,7 @@ final class CorsPolicy {
 
 	/**
 	 * Lấy danh sách exposed headers.
-	 * 
+	 *
 	 * @return string[]
 	 */
 	public function get_exposed_headers(): array {
@@ -253,7 +253,7 @@ final class CorsPolicy {
 
 	/**
 	 * Lấy Max-Age cho preflight.
-	 * 
+	 *
 	 * @return int
 	 */
 	public function get_preflight_max_age(): int {

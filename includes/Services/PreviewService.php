@@ -116,14 +116,17 @@ final class PreviewService {
 		}
 
 		$post_id = (int) $claims['post_id'];
-		$issuer = (int) $claims['sub'];
-		$current_user = (int) get_current_user_id();
-
-		if ( $current_user !== $issuer && ! current_user_can( 'edit_post', $post_id ) ) {
+		if ( ! current_user_can( 'edit_post', $post_id ) ) {
 			return new \WP_Error( 'headless_preview_forbidden', 'Forbidden.', [ 'status' => 403 ] );
 		}
 
 		return $this->tokens->revoke( $token );
+	}
+
+	public function can_revoke_preview_token( string $token ): bool {
+		$claims = $this->tokens->validate( $token );
+		return ! is_wp_error( $claims )
+			&& current_user_can( 'edit_post', (int) ( $claims['post_id'] ?? 0 ) );
 	}
 
 	public function get_token_service(): PreviewTokenService {

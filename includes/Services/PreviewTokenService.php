@@ -12,7 +12,7 @@ use TLU_Headless_API\Contracts\Service;
  * Quản lý việc phát hành, xác thực và thu hồi token xem trước (preview token).
  *
  * Token được thiết kế dưới dạng signed token (payload.signature) để đảm bảo
- * tính toàn vẹn mà không cần truy vấn database cho mỗi request, 
+ * tính toàn vẹn mà không cần truy vấn database cho mỗi request,
  * kết hợp với một registry ngắn hạn (transient) để hỗ trợ revoke.
  */
 final class PreviewTokenService implements Service {
@@ -44,7 +44,9 @@ final class PreviewTokenService implements Service {
 	private $cache;
 
 	public function __construct( ?TransientCache $cache = null ) {
-		$this->cache = $cache ?? TransientCache::from_config();
+		// The revocation registry is a security control and must remain enabled
+		// even when response caching is disabled in the plugin settings.
+		$this->cache = $cache ?? new TransientCache( 'headless_', self::DEFAULT_TTL, true );
 	}
 
 	/**
@@ -53,14 +55,18 @@ final class PreviewTokenService implements Service {
 	 * @param array $claims Các thông tin định danh gắn với token.
 	 * @return array| \WP_Error Mảng chứa token và metadata hoặc lỗi.
 	 */
-	public function issue( array $claims ): array {
+	public function issue( array $claims ): array|\WP_Error {
 		$ttl = $this->get_ttl();
 		$iat = time();
 		$exp = $iat + $ttl;
+		$jti = $this->generate_jti();
+		if ( is_wp_error( $jti ) ) {
+			return $jti;
+		}
 
 		$payload = [
 			'v'         => self::TOKEN_VERSION,
-			'jti'       => $this->generate_jti(),
+			'jti'       => $jti,
 			'iss'       => get_bloginfo( 'url' ),
 			'aud'       => 'headless-preview',
 			'sub'       => (int) get_current_user_id(),
@@ -77,7 +83,13 @@ final class PreviewTokenService implements Service {
 		$token = $this->sign_payload( $payload );
 
 		// Lưu vào registry để hỗ trợ revoke
-		$this->register_token( $payload );
+		if ( ! $this->register_token( $payload ) ) {
+			return new \WP_Error(
+				'headless_preview_registry_unavailable',
+				'Unable to persist the preview token revocation record.',
+				[ 'status' => 503 ]
+			);
+		}
 
 		return [
 			'token'      => $token,
@@ -95,7 +107,11 @@ final class PreviewTokenService implements Service {
 	 * @param string $token Token cần xác thực.
 	 * @return array| \WP_Error Claims nếu hợp lệ, hoặc WP_Error.
 	 */
-	public function validate( string $token ): array {
+	public function validate( string $token ): array|\WP_Error {
+		if ( strlen( $token ) > 4096 ) {
+			return new \WP_Error( 'headless_preview_invalid_token', 'Preview token is too long.' );
+		}
+
 		$payload = $this->unsign_payload( $token );
 
 		if ( is_wp_error( $payload ) ) {
@@ -128,6 +144,9 @@ final class PreviewTokenService implements Service {
 		if ( is_wp_error( $payload ) ) {
 			return false;
 		}
+		if ( empty( $payload['jti'] ) || ! is_string( $payload['jti'] ) || ! preg_match( '/^[a-f0-9]{32}$/', $payload['jti'] ) ) {
+			return false;
+		}
 
 		return $this->unregister_token( $payload['jti'] );
 	}
@@ -144,8 +163,8 @@ final class PreviewTokenService implements Service {
 			return '';
 		}
 
-		if ( preg_match( '/Bearer\s+(.+)$/i', $auth_header, $matches ) ) {
-			return $matches[1];
+		if ( preg_match( '/^Bearer\s+([^\s]+)$/i', trim( $auth_header ), $matches ) ) {
+			return strlen( $matches[1] ) <= 4096 ? $matches[1] : '';
 		}
 
 		return '';
@@ -169,7 +188,7 @@ final class PreviewTokenService implements Service {
 		return $encoded_payload . '.' . $signature;
 	}
 
-	private function unsign_payload( string $token ): array {
+	private function unsign_payload( string $token ): array|\WP_Error {
 		$parts = explode( '.', $token );
 		if ( count( $parts ) !== 2 ) {
 			return new \WP_Error( 'headless_preview_invalid_token', 'Malformed token structure.' );
@@ -208,6 +227,24 @@ final class PreviewTokenService implements Service {
 			return new \WP_Error( 'headless_preview_invalid_token', 'Invalid token audience.' );
 		}
 
+		$expected_issuer = untrailingslashit( (string) get_bloginfo( 'url' ) );
+		$actual_issuer   = untrailingslashit( (string) ( $payload['iss'] ?? '' ) );
+		if ( '' === $actual_issuer || ! hash_equals( $expected_issuer, $actual_issuer ) ) {
+			return new \WP_Error( 'headless_preview_invalid_token', 'Invalid token issuer.' );
+		}
+
+		if ( empty( $payload['sub'] ) || empty( $payload['post_id'] ) ) {
+			return new \WP_Error( 'headless_preview_invalid_token', 'Invalid token subject.' );
+		}
+
+		if ( ! isset( $payload['jti'] ) || ! is_string( $payload['jti'] ) || ! preg_match( '/^[a-f0-9]{32}$/', $payload['jti'] ) ) {
+			return new \WP_Error( 'headless_preview_invalid_token', 'Invalid token identifier.' );
+		}
+
+		if ( ! in_array( (string) ( $payload['source'] ?? '' ), [ 'current', 'revision', 'autosave' ], true ) ) {
+			return new \WP_Error( 'headless_preview_invalid_token', 'Invalid preview source.' );
+		}
+
 		if ( ( ! isset( $payload['schema'] ) ) || $payload['schema'] !== TLU_HEADLESS_API_SCHEMA_VERSION ) {
 			return new \WP_Error( 'headless_preview_invalid_token', 'Token schema mismatch.' );
 		}
@@ -231,7 +268,7 @@ final class PreviewTokenService implements Service {
 		return null;
 	}
 
-	private function register_token( array $payload ): void {
+	private function register_token( array $payload ): bool {
 		$jti = $payload['jti'];
 		$key = 'headless_preview_token:' . hash( 'sha256', $jti );
 
@@ -243,7 +280,7 @@ final class PreviewTokenService implements Service {
 			'revoked'    => false,
 		];
 
-		$this->cache->set( $key, $registry_data, $payload['exp'] - time() );
+		return $this->cache->set( $key, $registry_data, $payload['exp'] - time() );
 	}
 
 	private function is_token_in_registry( string $jti, string $raw_token ): bool {
@@ -258,7 +295,8 @@ final class PreviewTokenService implements Service {
 			return false;
 		}
 
-		if ( $data['token_hash'] !== hash( 'sha256', $raw_token ) ) {
+		$stored_hash = (string) ( $data['token_hash'] ?? '' );
+		if ( '' === $stored_hash || ! hash_equals( $stored_hash, hash( 'sha256', $raw_token ) ) ) {
 			return false;
 		}
 
@@ -270,11 +308,15 @@ final class PreviewTokenService implements Service {
 		return $this->cache->delete( $key );
 	}
 
-	private function generate_jti(): string {
+	private function generate_jti(): string|\WP_Error {
 		try {
 			return bin2hex( random_bytes( 16 ) );
 		} catch ( \Throwable $e ) {
-			return uniqid( 'jti_', true );
+			return new \WP_Error(
+				'headless_preview_entropy_unavailable',
+				'Unable to generate a cryptographically secure preview token.',
+				[ 'status' => 503 ]
+			);
 		}
 	}
 

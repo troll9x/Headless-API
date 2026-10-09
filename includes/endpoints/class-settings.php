@@ -11,6 +11,7 @@ use TLU_Headless_API\Normalizers\MediaNormalizer;
 use TLU_Headless_API\Integrations\AcfIntegration;
 use TLU_Headless_API\Integrations\PolylangIntegration;
 use TLU_Headless_API\Integrations\RankMathIntegration;
+use TLU_Headless_API\Integrations\MediaGalleryIntegration;
 
 /**
  * GET /tlu/v1/settings
@@ -24,12 +25,14 @@ class Settings {
 	private AcfIntegration      $acf;
 	private PolylangIntegration $polylang;
 	private RankMathIntegration $rank_math;
+	private MediaGalleryIntegration $media_gallery;
 
 	public function __construct() {
 		$this->media     = new MediaNormalizer();
 		$this->acf       = new AcfIntegration();
 		$this->polylang  = new PolylangIntegration();
 		$this->rank_math = new RankMathIntegration();
+		$this->media_gallery = new MediaGalleryIntegration();
 	}
 
 	public function register_routes(): void {
@@ -82,6 +85,9 @@ class Settings {
 			'acf'       => $this->acf->is_active(),
 			'polylang'  => $this->polylang->is_active(),
 			'rank_math' => $this->rank_math->is_active(),
+			'media_gallery' => $this->media_gallery->is_category_gallery_active(),
+			'selected_gallery' => $this->media_gallery->is_selected_gallery_active(),
+			'media_gallery_taxonomy' => $this->media_gallery->is_taxonomy_available(),
 		];
 	}
 

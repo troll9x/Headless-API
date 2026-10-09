@@ -23,7 +23,7 @@ class Helpers {
 	 * Kiểm tra những plugin tích hợp nào đang hoạt động.
 	 * Trả về mảng booleans, được cache trong bộ nhớ trong suốt request.
 	 *
-	 * @return array{acf: bool, polylang: bool, rank_math: bool}
+	 * @return array{acf: bool, polylang: bool, rank_math: bool, media_gallery: bool, selected_gallery: bool, media_gallery_taxonomy: bool}
 	 */
 	public static function plugin_feature_exists(): array {
 		if ( null === self::$features_cache ) {
@@ -31,6 +31,9 @@ class Helpers {
 				'acf'       => function_exists( 'get_field' ),
 				'polylang'  => function_exists( 'pll_current_language' ),
 				'rank_math' => defined( 'RANK_MATH_VERSION' ) || class_exists( 'RankMath' ),
+				'media_gallery' => shortcode_exists( 'media_gallery' ),
+				'selected_gallery' => class_exists( 'Sonnh_Gallery' ) || shortcode_exists( 'sonnh_selected_gallery' ),
+				'media_gallery_taxonomy' => taxonomy_exists( 'mlo-category' ),
 			];
 		}
 		return self::$features_cache;

@@ -7,6 +7,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class CacheVersionStore {
 	private const OPTION_KEY = 'tlu_headless_api_cache_generations';
+	private const LOCK_OPTION = 'tlu_headless_api_cache_generations_lock';
+	private const CACHE_GROUP = 'tlu_headless_api';
+	private const LOCK_TIMEOUT_SECONDS = 5;
 	private const BASE_DOMAINS = [ 'global', 'content', 'menus', 'options', 'search', 'schema' ];
 
 	public function get( string $domain ): int {
@@ -14,8 +17,19 @@ final class CacheVersionStore {
 		if ( '' === $domain ) {
 			return 1;
 		}
+		if ( wp_using_ext_object_cache() ) {
+			$cached = wp_cache_get( $this->cache_key( $domain ), self::CACHE_GROUP );
+			if ( false !== $cached ) {
+				return max( 1, (int) $cached );
+			}
+		}
+
 		$versions = $this->versions();
-		return max( 1, (int) ( $versions[ $domain ] ?? 1 ) );
+		$version  = max( 1, (int) ( $versions[ $domain ] ?? 1 ) );
+		if ( wp_using_ext_object_cache() ) {
+			wp_cache_add( $this->cache_key( $domain ), $version, self::CACHE_GROUP );
+		}
+		return $version;
 	}
 
 	public function get_many( array $domains ): array {
@@ -34,22 +48,47 @@ final class CacheVersionStore {
 		if ( '' === $domain ) {
 			return 1;
 		}
-		$versions = $this->versions();
-		$versions[ $domain ] = max( 1, (int) ( $versions[ $domain ] ?? 1 ) ) + 1;
-		update_option( self::OPTION_KEY, $versions, false );
-		return $versions[ $domain ];
+		return $this->with_lock( function () use ( $domain ): int {
+			$versions = $this->versions();
+			$versions[ $domain ] = max( 1, (int) ( $versions[ $domain ] ?? 1 ) ) + 1;
+			update_option( self::OPTION_KEY, $versions, false );
+			wp_cache_set( $this->cache_key( $domain ), $versions[ $domain ], self::CACHE_GROUP );
+			return $versions[ $domain ];
+		} );
 	}
 
 	public function bump_many( array $domains ): array {
-		$out = [];
-		foreach ( $domains as $domain ) {
-			$out[ $domain ] = $this->bump( (string) $domain );
+		$domains = array_values( array_unique( array_filter( array_map(
+			fn( $domain ) => $this->sanitize_domain( (string) $domain ),
+			$domains
+		) ) ) );
+		if ( empty( $domains ) ) {
+			return [];
 		}
-		return $out;
+
+		return $this->with_lock( function () use ( $domains ): array {
+			$versions = $this->versions();
+			$out      = [];
+			foreach ( $domains as $domain ) {
+				$versions[ $domain ] = max( 1, (int) ( $versions[ $domain ] ?? 1 ) ) + 1;
+				$out[ $domain ]      = $versions[ $domain ];
+			}
+			update_option( self::OPTION_KEY, $versions, false );
+			foreach ( $out as $domain => $version ) {
+				wp_cache_set( $this->cache_key( $domain ), $version, self::CACHE_GROUP );
+			}
+			return $out;
+		} );
 	}
 
 	public function reset_all(): void {
-		update_option( self::OPTION_KEY, array_fill_keys( self::BASE_DOMAINS, 1 ), false );
+		$this->with_lock( function (): void {
+			$versions = array_fill_keys( self::BASE_DOMAINS, 1 );
+			update_option( self::OPTION_KEY, $versions, false );
+			foreach ( $versions as $domain => $version ) {
+				wp_cache_set( $this->cache_key( $domain ), $version, self::CACHE_GROUP );
+			}
+		} );
 	}
 
 	public function relevant_domains_for_request( $request ): array {
@@ -118,5 +157,37 @@ final class CacheVersionStore {
 			$value[ $domain ] = max( 1, (int) ( $value[ $domain ] ?? 1 ) );
 		}
 		return $value;
+	}
+
+	private function cache_key( string $domain ): string {
+		return 'generation:' . get_current_blog_id() . ':' . $domain;
+	}
+
+	/**
+	 * Serialize generation writes so concurrent invalidations cannot overwrite
+	 * each other. add_option() is atomic at the database unique-key boundary and
+	 * therefore also works when Redis is unavailable or restarting.
+	 */
+	private function with_lock( callable $callback ): mixed {
+		$deadline = microtime( true ) + self::LOCK_TIMEOUT_SECONDS;
+		do {
+			$now = microtime( true );
+			if ( add_option( self::LOCK_OPTION, $now + self::LOCK_TIMEOUT_SECONDS, '', false ) ) {
+				try {
+					return $callback();
+				} finally {
+					delete_option( self::LOCK_OPTION );
+				}
+			}
+
+			$expires = (float) get_option( self::LOCK_OPTION, 0 );
+			if ( $expires > 0 && $expires < $now ) {
+				delete_option( self::LOCK_OPTION );
+				continue;
+			}
+			usleep( 10_000 );
+		} while ( microtime( true ) < $deadline );
+
+		throw new \RuntimeException( 'Timed out while updating Headless API cache generations.' );
 	}
 }

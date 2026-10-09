@@ -9,6 +9,7 @@ use TLU_Headless_API\Contracts\NormalizerInterface;
 use TLU_Headless_API\Integrations\AcfIntegration;
 use TLU_Headless_API\Integrations\PolylangIntegration;
 use TLU_Headless_API\Services\UrlTransformer;
+use TLU_Headless_API\Services\CanonicalUrlBuilder;
 
 /**
  * Xây dựng response đầy đủ của một trang (WP_Post) bao gồm ACF và SEO.
@@ -67,7 +68,10 @@ class PageNormalizer implements NormalizerInterface {
 			'title'          => get_the_title( $post ),
 			'excerpt'        => wp_strip_all_tags( get_the_excerpt( $post ) ),
 			'content'        => apply_filters( 'the_content', $post->post_content ),
-			'link'           => $this->transformer->transform_navigation_url( get_permalink( $post ) ),
+			'link'           => 'post' === $post->post_type
+				? CanonicalUrlBuilder::post_url( $post )
+				: $this->transformer->transform_navigation_url( get_permalink( $post ) ),
+			'canonical_path' => 'post' === $post->post_type ? CanonicalUrlBuilder::post_path( $post ) : '',
 			'type'           => $post->post_type,
 			'date'           => $post->post_date,
 			'modified'       => $post->post_modified,
@@ -76,6 +80,30 @@ class PageNormalizer implements NormalizerInterface {
 			'featured_image' => $this->media->normalize( get_post_thumbnail_id( $post->ID ) ?: null ),
 			'acf'            => $this->build_acf( $post->ID ),
 			'seo'            => $this->seo->from_post( $post ),
+			'language'       => $this->build_language_metadata( $post ),
+			'translations'   => $this->build_translations( $post ),
+		];
+	}
+
+	/**
+	 * Response nhẹ cho danh sách post/CPT, vẫn chứa đầy đủ ACF đã chuẩn hóa.
+	 * Không nhúng content và SEO để tránh payload archive quá lớn.
+	 */
+	public function from_post_summary( \WP_Post $post ): array {
+		return [
+			'id'             => (int) $post->ID,
+			'slug'           => $post->post_name,
+			'title'          => get_the_title( $post ),
+			'excerpt'        => wp_strip_all_tags( get_the_excerpt( $post ) ),
+			'link'           => 'post' === $post->post_type
+				? CanonicalUrlBuilder::post_url( $post )
+				: $this->transformer->transform_navigation_url( get_permalink( $post ) ),
+			'canonical_path' => 'post' === $post->post_type ? CanonicalUrlBuilder::post_path( $post ) : '',
+			'type'           => $post->post_type,
+			'date'           => $post->post_date,
+			'modified'       => $post->post_modified,
+			'featured_image' => $this->media->normalize( get_post_thumbnail_id( $post->ID ) ?: null ),
+			'acf'            => $this->build_acf( $post->ID ),
 			'language'       => $this->build_language_metadata( $post ),
 			'translations'   => $this->build_translations( $post ),
 		];
@@ -129,9 +157,13 @@ class PageNormalizer implements NormalizerInterface {
 
 		foreach ( $translations as $trans ) {
 			$result[] = [
+				'id'       => (int) $trans['id'],
+				'slug'     => (string) get_post_field( 'post_name', (int) $trans['id'] ),
 				'language' => $trans['language'],
 				'locale'   => $trans['locale'],
-				'url'      => $this->transformer->transform_navigation_url( $trans['url'] ),
+				'url'      => isset( $trans['id'], $trans['language'] ) && 'post' === get_post_type( (int) $trans['id'] )
+					? CanonicalUrlBuilder::post_url( get_post( (int) $trans['id'] ) )
+					: $this->transformer->transform_navigation_url( $trans['url'] ),
 			];
 		}
 

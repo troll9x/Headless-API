@@ -35,7 +35,7 @@ class Preview {
 					'token' => [
 						'required'          => false,
 						'sanitize_callback' => 'sanitize_text_field',
-						'validate_callback' => fn( $v ) => is_string( $v ) && strlen( trim( $v ) ) > 10,
+						'validate_callback' => fn( $v ) => is_string( $v ) && strlen( trim( $v ) ) > 10 && strlen( $v ) <= 4096,
 						'description'       => 'Preview token từ POST /preview-token.',
 					],
 				],
@@ -43,7 +43,7 @@ class Preview {
 		);
 	}
 
-	public function handle( \WP_REST_Request $request ): \WP_REST_Response {
+	public function handle( \WP_REST_Request $request ): \WP_REST_Response|\WP_Error {
 		$token = $this->extract_token( $request );
 		if ( '' === $token ) {
 			return Response::error( 'headless_preview_auth_required', 'Preview token is required.', 401 );
@@ -68,12 +68,12 @@ class Preview {
 
 	private function extract_token( \WP_REST_Request $request ): string {
 		$auth_header = $request->get_header( 'Authorization' );
-		if ( $auth_header && preg_match( '/Bearer\s+(.+)$/i', $auth_header, $matches ) ) {
-			return $matches[1];
+		if ( $auth_header && preg_match( '/^Bearer\s+([^\s]+)$/i', trim( $auth_header ), $matches ) ) {
+			return strlen( $matches[1] ) <= 4096 ? $matches[1] : '';
 		}
 
 		$token = $request->get_param( 'token' );
-		if ( $token ) {
+		if ( is_string( $token ) && strlen( $token ) <= 4096 ) {
 			return $token;
 		}
 

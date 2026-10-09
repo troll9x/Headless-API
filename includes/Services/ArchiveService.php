@@ -23,6 +23,8 @@ class ArchiveService {
 	private PolylangIntegration $polylang;
 	private TransientCache $cache;
 	private ArchiveResolver $resolver;
+	private int $last_total = 0;
+	private int $last_total_pages = 0;
 
 	public function __construct(
 		?ArchiveNormalizer $archive_normalizer = null,
@@ -58,10 +60,14 @@ class ArchiveService {
 	 * @return array Danh sách posts.
 	 */
 	public function get_archive_posts( array $context, int $page = 1, int $per_page = 10 ): array {
+		$page     = max( 1, $page );
+		$per_page = min( 100, max( 1, $per_page ) );
 		$args = [
 			'paged'          => $page,
 			'posts_per_page' => $per_page,
 			'post_status'    => 'publish',
+			'no_found_rows'  => false,
+			'ignore_sticky_posts' => true,
 		];
 
 		switch ( $context['type'] ) {
@@ -112,9 +118,11 @@ class ArchiveService {
 			$args['lang'] = $context['language'];
 		}
 
-		$posts = get_posts( $args );
+		$query = new \WP_Query( $args );
+		$this->last_total       = (int) $query->found_posts;
+		$this->last_total_pages = (int) $query->max_num_pages;
 
-		return array_map( [ $this->archive_normalizer, 'from_post' ], $posts );
+		return array_map( [ $this->archive_normalizer, 'from_post' ], $query->posts );
 	}
 
 	/**
@@ -126,6 +134,8 @@ class ArchiveService {
 	 * @return array|\WP_Error Archive response.
 	 */
 	public function get_archive( array $query, int $page = 1, int $per_page = 10 ): array|\WP_Error {
+		$page     = max( 1, $page );
+		$per_page = min( 100, max( 1, $per_page ) );
 		$requested_lang = trim( (string) ( $query['lang'] ?? '' ) );
 		$lang = $this->polylang->normalize_language( $requested_lang );
 		if ( '' !== $requested_lang && '' === $lang ) {
@@ -167,8 +177,8 @@ class ArchiveService {
 			'pagination' => [
 				'page' => $page,
 				'per_page' => $per_page,
-				'total' => 0, // TODO: Calculate total posts
-				'total_pages' => 0,
+				'total' => $this->last_total,
+				'total_pages' => $this->last_total_pages,
 			],
 		] );
 

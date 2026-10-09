@@ -72,7 +72,7 @@ class Settings_Page {
 
 	public function defaults(): array {
 		return [
-			'frontend_url'    => 'http://localhost:3000',
+			'frontend_url'    => 'https://tlu.edu.vn',
 			'enable_cache'    => false,
 			'cache_ttl'       => 300,
 			'allowed_domains' => '',
@@ -95,9 +95,22 @@ class Settings_Page {
 	public function sanitize_options( $input ): array {
 		$clean = [];
 
-		$clean['frontend_url'] = ! empty( $input['frontend_url'] )
-			? esc_url_raw( trim( $input['frontend_url'] ) )
-			: 'http://localhost:3000';
+		$frontend_url = ! empty( $input['frontend_url'] )
+			? untrailingslashit( esc_url_raw( trim( $input['frontend_url'] ) ) )
+			: 'https://tlu.edu.vn';
+		$parts = wp_parse_url( $frontend_url );
+		$host = is_array( $parts ) ? strtolower( (string) ( $parts['host'] ?? '' ) ) : '';
+		$scheme = is_array( $parts ) ? strtolower( (string) ( $parts['scheme'] ?? '' ) ) : '';
+		$is_local = in_array( $host, [ 'localhost', '127.0.0.1', '::1' ], true );
+		if ( 'https' !== $scheme && ! ( 'http' === $scheme && $is_local ) ) {
+			add_settings_error(
+				self::OPTION_NAME,
+				'tlu_headless_https_required',
+				'Frontend URL phải dùng HTTPS; HTTP chỉ được phép cho localhost.'
+			);
+			$frontend_url = 'https://tlu.edu.vn';
+		}
+		$clean['frontend_url'] = $frontend_url;
 
 		$clean['enable_cache'] = ! empty( $input['enable_cache'] );
 
@@ -117,7 +130,7 @@ class Settings_Page {
 	public function field_frontend_url(): void {
 		$val = $this->get( 'frontend_url' );
 		printf(
-			'<input type="url" name="%s[frontend_url]" value="%s" class="regular-text" placeholder="http://localhost:3000">
+			'<input type="url" name="%s[frontend_url]" value="%s" class="regular-text" placeholder="https://tlu.edu.vn">
 			<p class="description">URL gốc của ứng dụng Next.js frontend.</p>',
 			esc_attr( self::OPTION_NAME ),
 			esc_attr( $val )

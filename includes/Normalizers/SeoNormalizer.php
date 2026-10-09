@@ -89,7 +89,9 @@ class SeoNormalizer implements NormalizerInterface {
 		// ── Core values dùng làm fallback ─────────────────────────────────────
 		$core_title       = get_the_title( $post );
 		$core_description = wp_strip_all_tags( get_the_excerpt( $post ) );
-		$core_canonical   = $this->transformer->transform_navigation_url( get_permalink( $post ) );
+		$core_canonical   = 'post' === $post->post_type
+			? \TLU_Headless_API\Services\CanonicalUrlBuilder::post_url( $post )
+			: $this->transformer->transform_navigation_url( get_permalink( $post ) );
 		$thumb            = $this->media->normalize( get_post_thumbnail_id( $post->ID ) ?: null );
 
 		// ── Title & Description ───────────────────────────────────────────────
@@ -157,7 +159,9 @@ class SeoNormalizer implements NormalizerInterface {
 	private function from_core( \WP_Post $post ): array {
 		$title       = get_the_title( $post );
 		$description = wp_strip_all_tags( get_the_excerpt( $post ) );
-		$canonical   = $this->transformer->transform_navigation_url( get_permalink( $post ) );
+		$canonical   = 'post' === $post->post_type
+			? \TLU_Headless_API\Services\CanonicalUrlBuilder::post_url( $post )
+			: $this->transformer->transform_navigation_url( get_permalink( $post ) );
 		$thumb       = $this->media->normalize( get_post_thumbnail_id( $post->ID ) ?: null );
 
 		return [

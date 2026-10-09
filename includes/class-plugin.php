@@ -9,6 +9,7 @@ use TLU_Headless_API\Cache\TransientCache;
 use TLU_Headless_API\Integrations\RevalidationHooksIntegration;
 use TLU_Headless_API\Integrations\RestHttpIntegration;
 use TLU_Headless_API\Integrations\CacheInvalidationIntegration;
+use TLU_Headless_API\Services\RateLimiter;
 
 /**
  * Điểm khởi động plugin — Singleton.
@@ -33,11 +34,24 @@ class Plugin {
 	private function __construct() {
 		$this->loader = new Loader();
 		$this->loader->load_core();
+		Config::apply_release_defaults();
+		Upgrader::run();
 		$this->init_hooks();
 	}
 
 	private function init_hooks(): void {
+		add_action( RateLimiter::CLEANUP_HOOK, [ new RateLimiter(), 'cleanup_expired' ] );
+		if ( ! wp_next_scheduled( RateLimiter::CLEANUP_HOOK ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'hourly', RateLimiter::CLEANUP_HOOK );
+		}
 		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			require_once TLU_HEADLESS_API_PATH . 'includes/cli/class-permalink-snapshot-command.php';
+			$command = new CLI\PermalinkSnapshotCommand();
+			\WP_CLI::add_command( 'headless-api snapshot-permalinks', [ $command, 'snapshot' ] );
+			\WP_CLI::add_command( 'headless-api export-permalink-redirects', [ $command, 'export_redirects' ] );
+		}
+		add_filter( 'headless_api_allowed_options_pages', [ $this, 'allow_public_options_pages' ] );
 
 		// Invalidation cache khi nội dung thay đổi.
 		add_action( 'save_post',                [ $this, 'on_post_change' ], 10, 2 );
@@ -47,18 +61,18 @@ class Plugin {
 		add_action( 'wp_delete_nav_menu',       [ $this, 'on_menu_change' ] );
 		// ACF options save
 		add_action( 'acf/save_post',            [ $this, 'on_acf_save' ], 20 );
- 		// Term changes (taxonomy cache)
- 		add_action( 'edited_term',              [ $this, 'on_term_change' ] );
- 		add_action( 'deleted_term_taxonomy',    [ $this, 'on_term_change' ] );
+		// Term changes (taxonomy cache)
+		add_action( 'edited_term',              [ $this, 'on_term_change' ] );
+		add_action( 'deleted_term_taxonomy',    [ $this, 'on_term_change' ] );
 
-  		// Revalidation hooks integration
-  		( new RevalidationHooksIntegration() )->register();
-  		
-  		// HTTP cache integration
-  		( new RestHttpIntegration() )->register();
-  		
-  		// Cache invalidation integration
-  		( new CacheInvalidationIntegration() )->register();
+		// Revalidation hooks integration
+		( new RevalidationHooksIntegration() )->register();
+
+		// HTTP cache integration
+		( new RestHttpIntegration() )->register();
+
+		// Cache invalidation integration
+		( new CacheInvalidationIntegration() )->register();
 
 		if ( is_admin() ) {
 			$this->loader->load_admin();
@@ -70,7 +84,39 @@ class Plugin {
 	}
 
 	public function register_rest_routes(): void {
+		register_rest_field( 'post', 'canonical_path', [
+			'get_callback' => static function ( array $object ): string {
+				$post = get_post( (int) ( $object['id'] ?? 0 ) );
+				return $post instanceof \WP_Post
+					? Services\CanonicalUrlBuilder::post_path( $post )
+					: '';
+			},
+			'schema' => [
+				'description' => 'Stable frontend path independent of WordPress permalink filters.',
+				'type'        => 'string',
+				'context'     => [ 'view', 'edit' ],
+			],
+		] );
 		( new Rest_Service_Provider() )->register();
+	}
+
+	/**
+	 * Allow only the dedicated public site options pages.
+	 *
+	 * Keep secrets and unrelated site settings on separate ACF options keys;
+	 * the generic options endpoint returns every field assigned to an allowed key.
+	 *
+	 * @param string[] $keys Existing allowlisted options page keys.
+	 * @return string[]
+	 */
+	public function allow_public_options_pages( array $keys ): array {
+		$keys[] = 'tlu_site_hero';
+		$keys[] = 'tlu_site_favicon';
+		$keys[] = 'tlu_site_img';
+		$keys[] = 'tlu_site_logo';
+		$keys[] = 'tlu_site_footer';
+		$keys[] = 'tlu_site_social';
+		return array_values( array_unique( $keys ) );
 	}
 
 	/**
@@ -84,6 +130,17 @@ class Plugin {
 		if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
 			return;
 		}
+
+		$post_type = $post instanceof \WP_Post ? $post->post_type : get_post_type( $post_id );
+		if ( in_array( $post_type, [
+			'acf-field-group',
+			'acf-field',
+			'acf-post-type',
+			'acf-taxonomy',
+			'acf-ui-options-page',
+		], true ) ) {
+			return;
+		}
 		TransientCache::from_config()->flush();
 	}
 
@@ -94,12 +151,12 @@ class Plugin {
 
 	/**
 	 * Flush cache khi ACF lưu options page hoặc post.
-	 * acf/save_post nhận post_id có thể là string 'options'.
+	 * ACF dùng post_id dạng chuỗi cho options, user, term và các storage key tùy chỉnh.
 	 *
 	 * @param int|string $post_id
 	 */
 	public function on_acf_save( $post_id ): void {
-		if ( 'options' === $post_id || ( is_string( $post_id ) && str_ends_with( $post_id, 'options' ) ) ) {
+		if ( is_string( $post_id ) ) {
 			TransientCache::from_config()->flush( 'options' );
 		} else {
 			// Bài viết thông thường — flush toàn bộ.

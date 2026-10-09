@@ -13,13 +13,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class RevalidationDispatcher {
 
 	private RevalidationSigner $signer;
+	private RevalidationConfig $config;
 	private const TIMEOUT = 5;
 
 	/**
 	 * @param RevalidationSigner|null $signer Optional signer instance.
 	 */
-	public function __construct( ?RevalidationSigner $signer = null ) {
-		$this->signer = $signer ?? new RevalidationSigner();
+	public function __construct( ?RevalidationSigner $signer = null, ?RevalidationConfig $config = null ) {
+		$this->config = $config ?? new RevalidationConfig();
+		$this->signer = $signer ?? new RevalidationSigner( $this->config );
 	}
 
 	/**
@@ -34,17 +36,17 @@ final class RevalidationDispatcher {
 	 * }
 	 */
 	public function dispatch( array $event ): array {
-		$url = $this->get_revalidation_url();
-		if ( ! $url ) {
+		$url = $this->config->url();
+		if ( '' === $this->config->secret() ) {
 			return [
 				'success'      => false,
 				'http_code'    => 0,
-				'error_code'   => 'no_url_configured',
-				'error_message' => 'Revalidation URL not configured.',
+				'error_code'   => 'no_secret_configured',
+				'error_message' => 'Revalidation secret not configured.',
 			];
 		}
 
-		if ( ! $this->is_url_allowed( $url ) ) {
+		if ( ! $this->config->is_url_allowed( $url ) ) {
 			return [
 				'success'      => false,
 				'http_code'    => 0,
@@ -115,7 +117,14 @@ final class RevalidationDispatcher {
 			return true; // Network errors luôn retry
 		}
 
-		$http_code = (int) wp_remote_retrieve_response_code( $response_or_error );
+		if ( is_array( $response_or_error ) && array_key_exists( 'http_code', $response_or_error ) ) {
+			$http_code = (int) $response_or_error['http_code'];
+			if ( 0 === $http_code && ! empty( $response_or_error['error_code'] ) ) {
+				return true;
+			}
+		} else {
+			$http_code = (int) wp_remote_retrieve_response_code( $response_or_error );
+		}
 
 		// Success codes
 		if ( $http_code >= 200 && $http_code <= 299 ) {
@@ -161,7 +170,7 @@ final class RevalidationDispatcher {
 
 	// ── Private Helpers ────────────────────────────────────────────────────────
 
-	private function get_revalidation_url(): string {
+	private function legacy_get_revalidation_url(): string {
 		// Priority 1: Constant
 		if ( defined( 'TLU_HEADLESS_REVALIDATION_URL' ) ) {
 			return (string) TLU_HEADLESS_REVALIDATION_URL;
@@ -178,7 +187,7 @@ final class RevalidationDispatcher {
 		return $options['revalidation_url'] ?? '';
 	}
 
-	private function is_url_allowed( string $url ): bool {
+	private function legacy_is_url_allowed( string $url ): bool {
 		// Check scheme
 		$parsed = wp_parse_url( $url );
 		if ( ! is_array( $parsed ) || empty( $parsed['scheme'] ) ) {
@@ -191,7 +200,7 @@ final class RevalidationDispatcher {
 		}
 
 		// Unless explicitly allowed, require HTTPS
-		if ( 'https' !== $scheme && ! $this->is_insecure_allowed() ) {
+		if ( 'https' !== $scheme && ! $this->legacy_is_insecure_allowed() ) {
 			return false;
 		}
 
@@ -214,7 +223,7 @@ final class RevalidationDispatcher {
 		return true;
 	}
 
-	private function is_insecure_allowed(): bool {
+	private function legacy_is_insecure_allowed(): bool {
 		return (bool) apply_filters( 'headless_api_allow_insecure_revalidation_url', false );
 	}
 

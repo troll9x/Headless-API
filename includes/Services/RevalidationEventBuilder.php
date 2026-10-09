@@ -29,7 +29,7 @@ final class RevalidationEventBuilder {
 	 * @param array $context Additional context: ['causes' => [...], 'previous_status' => '...', ...]
 	 * @return array|false Event payload hoặc false nếu không thể xây dựng.
 	 */
-	public function build_content_event( string $event, \WP_Post $post, array $context = [] ): array {
+	public function build_content_event( string $event, \WP_Post $post, array $context = [] ): array|false {
 		if ( ! $this->is_content_event_allowed( $event ) ) {
 			return false;
 		}
@@ -39,6 +39,9 @@ final class RevalidationEventBuilder {
 		}
 
 		$event_id = $this->generate_event_id();
+		if ( false === $event_id ) {
+			return false;
+		}
 		$timestamp = time();
 
 		// Xác định language
@@ -89,7 +92,7 @@ final class RevalidationEventBuilder {
 	 * @param array $context Context.
 	 * @return array|false
 	 */
-	public function build_term_event( string $event, int $term_id, string $taxonomy, array $context = [] ): array {
+	public function build_term_event( string $event, int $term_id, string $taxonomy, array $context = [] ): array|false {
 		if ( ! $this->is_term_event_allowed( $event ) ) {
 			return false;
 		}
@@ -104,6 +107,9 @@ final class RevalidationEventBuilder {
 		}
 
 		$event_id = $this->generate_event_id();
+		if ( false === $event_id ) {
+			return false;
+		}
 		$timestamp = time();
 
 		// Xác định language
@@ -151,12 +157,15 @@ final class RevalidationEventBuilder {
 	 * @param array $context Context.
 	 * @return array|false
 	 */
-	public function build_menu_event( string $event, int $menu_id, array $context = [] ): array {
+	public function build_menu_event( string $event, int $menu_id, array $context = [] ): array|false {
 		if ( ! $this->is_menu_event_allowed( $event ) ) {
 			return false;
 		}
 
 		$event_id = $this->generate_event_id();
+		if ( false === $event_id ) {
+			return false;
+		}
 		$timestamp = time();
 
 		// Menu không có language cụ thể, dùng tag global
@@ -193,7 +202,7 @@ final class RevalidationEventBuilder {
 	 * @param array $changed_keys Keys of changed options.
 	 * @return array|false
 	 */
-	public function build_options_event( array $changed_keys = [] ): array {
+	public function build_options_event( array $changed_keys = [] ): array|false {
 		if ( empty( $changed_keys ) ) {
 			return false;
 		}
@@ -206,6 +215,9 @@ final class RevalidationEventBuilder {
 		}
 
 		$event_id = $this->generate_event_id();
+		if ( false === $event_id ) {
+			return false;
+		}
 		$timestamp = time();
 
 		return [
@@ -221,12 +233,7 @@ final class RevalidationEventBuilder {
 			'entity'        => [
 				'type' => 'options',
 			],
-			'invalidate'    => [
-				'paths' => [],
-				'tags'  => [
-					'wp:global:options',
-				],
-			],
+			'invalidate'    => $this->build_options_invalidation( $filtered_keys ),
 			'context'       => [
 				'causes' => ['options'],
 				'changed_keys' => $filtered_keys,
@@ -239,10 +246,15 @@ final class RevalidationEventBuilder {
 	 *
 	 * @return array
 	 */
-	public function build_test_event(): array {
+	public function build_test_event(): array|false {
+		$event_id = $this->generate_event_id();
+		if ( false === $event_id ) {
+			return false;
+		}
+
 		return [
 			'version'       => 1,
-			'event_id'      => $this->generate_event_id(),
+			'event_id'      => $event_id,
 			'event'         => 'revalidation.test',
 			'occurred_at'   => time(),
 			'schema'        => \TLU_HEADLESS_API_SCHEMA_VERSION,
@@ -268,11 +280,11 @@ final class RevalidationEventBuilder {
 
 	// ── Private Helpers ────────────────────────────────────────────────────────
 
-	private function generate_event_id(): string {
+	private function generate_event_id(): string|false {
 		try {
 			return bin2hex( random_bytes( 16 ) );
 		} catch ( \Throwable $e ) {
-			return uniqid( 'evt_', true );
+			return false;
 		}
 	}
 
@@ -312,6 +324,11 @@ final class RevalidationEventBuilder {
 			'user_request',
 			'wp_global_styles',
 			'wp_navigation',
+			'acf-field-group',
+			'acf-field',
+			'acf-post-type',
+			'acf-taxonomy',
+			'acf-ui-options-page',
 		];
 		return in_array( $post_type, $internal, true );
 	}
@@ -324,7 +341,7 @@ final class RevalidationEventBuilder {
 		return ! empty( $obj->public ) || ! empty( $obj->publicly_queryable );
 	}
 
-	private function get_allowed_option_keys(): array {
+	public function get_allowed_option_keys(): array {
 		$allowed = [
 			// Site identity
 			'site_title',
@@ -333,8 +350,30 @@ final class RevalidationEventBuilder {
 			'menu_locations',
 			// Public headless options
 			'frontend_url',
+			// Public media gallery options
+			'sonnguyen_media_gallery_back_url',
+			'sonnh_gallery_selected_category',
+			'sonnh_gallery_selected_images',
+			'sonnh_gallery_featured_image_id',
+			// Public ACF partner network.
+			'danh_sach_doi_tac',
 		];
 		return apply_filters( 'headless_api_revalidation_option_names', $allowed );
+	}
+
+	private function build_options_invalidation( array $changed_keys ): array {
+		$paths = [];
+		$tags  = [ 'wp:global:options' ];
+
+		if ( in_array( 'danh_sach_doi_tac', $changed_keys, true ) ) {
+			$paths = [ '/', '/en' ];
+			$tags[] = 'partner-logos';
+		}
+
+		return [
+			'paths' => $paths,
+			'tags'  => array_values( array_unique( $tags ) ),
+		];
 	}
 
 	private function build_content_paths( \WP_Post $post, string $event, array $context = [] ): array {
@@ -344,6 +383,12 @@ final class RevalidationEventBuilder {
 		$current_path = $this->get_post_public_path( $post );
 		if ( $current_path ) {
 			$paths[] = $current_path;
+		}
+		if ( 'post' === $post->post_type ) {
+			$canonical_path = $this->normalize_url_to_path( CanonicalUrlBuilder::post_url( $post ) );
+			if ( $canonical_path && $canonical_path !== $current_path ) {
+				$paths[] = $canonical_path;
+			}
 		}
 
 		// Thêm previous path nếu có

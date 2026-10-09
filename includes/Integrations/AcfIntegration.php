@@ -6,6 +6,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use TLU_Headless_API\Contracts\IntegrationInterface;
+use WP_Term;
 
 /**
  * Bọc toàn bộ ACF Pro API dùng trong framework.
@@ -39,6 +40,22 @@ class AcfIntegration implements IntegrationInterface {
 			return [];
 		}
 		$fields = get_field_objects( $post_id );
+		return is_array( $fields ) ? $fields : [];
+	}
+
+	/**
+	 * Trả về field objects của một term/taxonomy.
+	 *
+	 * ACF nhận WP_Term trực tiếp và tự tạo post ID nội bộ dạng
+	 * "{taxonomy}_{term_id}". Dùng object giúp tránh sai tiền tố taxonomy.
+	 */
+	public function get_term_field_objects( WP_Term $term ): array {
+		if ( ! $this->is_active() ) {
+			return [];
+		}
+
+		$fields = get_field_objects( $term );
+
 		return is_array( $fields ) ? $fields : [];
 	}
 

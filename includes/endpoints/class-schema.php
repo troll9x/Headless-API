@@ -109,11 +109,13 @@ class Schema {
 			"$tlu/schema"   => [ 'description' => 'Tài liệu API này.' ],
 
 			"$h/page"  => [
-				'description' => 'Toàn bộ ACF field của page/post, đã chuẩn hóa theo type.',
+				'description' => 'Lấy chi tiết theo slug hoặc danh sách post/CPT kèm ACF đã chuẩn hóa.',
 				'params'      => [
-					[ 'name' => 'slug',      'type' => 'string',  'required' => true,  'description' => 'Post slug.' ],
+					[ 'name' => 'slug',      'type' => 'string',  'required' => false, 'description' => 'Post slug; bỏ trống để lấy danh sách.' ],
 					[ 'name' => 'lang',      'type' => 'string',  'required' => false, 'default' => '',     'description' => 'Mã ngôn ngữ Polylang (vd: vi, en).' ],
 					[ 'name' => 'post_type', 'type' => 'string',  'required' => false, 'default' => 'page', 'description' => 'WordPress post type.' ],
+					[ 'name' => 'page',      'type' => 'integer', 'required' => false, 'default' => 1,      'description' => 'Trang danh sách.' ],
+					[ 'name' => 'per_page',  'type' => 'integer', 'required' => false, 'default' => 10,     'description' => 'Số item mỗi trang, tối đa 100.' ],
 				],
 			],
 
@@ -130,6 +132,20 @@ class Schema {
 				'description' => 'Toàn bộ ACF field của options page (key phải trong allowlist).',
 				'params'      => [
 					[ 'name' => 'key',  'type' => 'string', 'required' => true,  'description' => 'ACF options page post_id key. Allowlist mặc định rỗng.' ],
+					[ 'name' => 'lang', 'type' => 'string', 'required' => false, 'default' => '' ],
+				],
+			],
+
+			"$h/partner-logos" => [
+				'description' => 'Toàn bộ logo công khai từ ACF repeater danh_sach_doi_tac.',
+				'params'      => [
+					[ 'name' => 'lang', 'type' => 'string', 'required' => false, 'default' => '' ],
+				],
+			],
+
+			"$h/priority-posts" => [
+				'description' => 'Public HOT/NEW homepage post selections from post meta.',
+				'params'      => [
 					[ 'name' => 'lang', 'type' => 'string', 'required' => false, 'default' => '' ],
 				],
 			],
@@ -154,11 +170,12 @@ class Schema {
 			],
 
 			"$h/search" => [
-				'description' => 'Bridge giữ nguyên ranking và dữ liệu từ WPX FULLTEXT search.',
+				'description' => 'Search through WPX FULLTEXT, filter by Polylang language, and return stable frontend article paths.',
 				'params'      => [
 					[ 'name' => 'q',    'type' => 'string',  'required' => true,  'description' => 'Từ khóa, tối thiểu 2 ký tự.' ],
 					[ 'name' => 'per',  'type' => 'integer', 'required' => false, 'default' => 8 ],
 					[ 'name' => 'page', 'type' => 'integer', 'required' => false, 'default' => 1 ],
+					[ 'name' => 'lang', 'type' => 'string', 'required' => false, 'description' => 'Optional language slug: vi or en.' ],
 				],
 			],
 
@@ -196,6 +213,82 @@ class Schema {
 			],
 			"$h/content-taxonomies/(?P<taxonomy>[a-z0-9_-]+)" => [
 				'description' => 'Metadata của một Custom Taxonomy công khai.',
+			],
+
+			"$h/media-gallery/categories" => [
+				'description' => 'Danh sách thư mục ảnh mlo-category của SonNH Media Gallery.',
+				'params'      => [
+					[ 'name' => 'page',     'type' => 'integer', 'required' => false, 'default' => 1 ],
+					[ 'name' => 'per_page', 'type' => 'integer', 'required' => false, 'default' => 12, 'description' => 'Tối đa 50 thư mục.' ],
+					[ 'name' => 'lang',     'type' => 'string',  'required' => false, 'default' => '' ],
+				],
+			],
+			"$h/media-gallery/categories/(?P<slug>[^/]+)" => [
+				'description' => 'Ảnh đã chuẩn hóa trong một thư mục mlo-category.',
+				'params'      => [
+					[ 'name' => 'slug',     'type' => 'string',  'required' => true ],
+					[ 'name' => 'page',     'type' => 'integer', 'required' => false, 'default' => 1 ],
+					[ 'name' => 'per_page', 'type' => 'integer', 'required' => false, 'default' => 24, 'description' => 'Tối đa 100 ảnh.' ],
+					[ 'name' => 'lang',     'type' => 'string',  'required' => false, 'default' => '' ],
+					[ 'name' => 'order',    'type' => 'string',  'required' => false, 'default' => 'asc', 'description' => 'asc hoặc desc theo ngày tải lên.' ],
+				],
+			],
+			"$h/media-gallery/home" => [
+				'description' => 'Danh mục, ảnh đã chọn và ảnh nổi bật của Son NH Template Gallery.',
+			],
+			"$h/organizations/(?P<slug>[^/]+)" => [
+				'description' => 'Cơ cấu tổ chức theo danh mục danh-muc-to-chuc, gồm người đứng đầu và thành viên đã sắp xếp.',
+				'params'      => [
+					[ 'name' => 'slug', 'type' => 'string', 'required' => true ],
+					[ 'name' => 'lang', 'type' => 'string', 'required' => false, 'default' => '' ],
+				],
+				'responses'   => [
+					'200' => 'organization_category, leader và organization_member[]',
+					'400' => 'Ngôn ngữ không hợp lệ',
+					'404' => 'Không tìm thấy danh mục tổ chức',
+					'503' => 'CPT hoặc taxonomy chưa được đăng ký',
+				],
+			],
+			"$h/organizations/members/(?P<slug>[^/]+)" => [
+				'description' => 'Hồ sơ chi tiết một bài to-chuc theo logic template single-to-chuc.php.',
+				'params'      => [
+					[ 'name' => 'slug', 'type' => 'string', 'required' => true ],
+					[ 'name' => 'lang', 'type' => 'string', 'required' => false, 'default' => '' ],
+				],
+				'responses'   => [
+					'200' => 'organization_profile',
+					'400' => 'Ngôn ngữ không hợp lệ',
+					'404' => 'Không tìm thấy hồ sơ công khai',
+					'503' => 'CPT hoặc ACF chưa hoạt động',
+				],
+			],
+			"$h/documents/(?P<slug>[^/]+)" => [
+				'description' => 'Dữ liệu single của CPT tai-lieu, gồm banner taxonomy, danh sách tệp và chỉ dẫn redirect.',
+				'params'      => [
+					[ 'name' => 'slug', 'type' => 'string', 'required' => true ],
+					[ 'name' => 'lang', 'type' => 'string', 'required' => false, 'default' => '' ],
+				],
+				'responses'   => [
+					'200' => 'document_banner|null, document_item[] và redirect',
+					'400' => 'Ngôn ngữ không hợp lệ',
+					'404' => 'Không tìm thấy tài liệu công khai',
+					'503' => 'CPT, taxonomy hoặc ACF chưa hoạt động',
+				],
+			],
+			"$h/documents/categories/(?P<slug>[^/]+)" => [
+				'description' => 'Archive loai-tai-lieu, nhóm bài theo danh mục con và fallback về term hiện tại.',
+				'params'      => [
+					[ 'name' => 'slug',     'type' => 'string',  'required' => true ],
+					[ 'name' => 'lang',     'type' => 'string',  'required' => false, 'default' => '' ],
+					[ 'name' => 'page',     'type' => 'integer', 'required' => false, 'default' => 1 ],
+					[ 'name' => 'per_page', 'type' => 'integer', 'required' => false, 'default' => 6, 'description' => 'Tối đa 24 bài mỗi nhóm.' ],
+				],
+				'responses'   => [
+					'200' => 'document_archive_group[] và document_banner|null',
+					'400' => 'Ngôn ngữ không hợp lệ',
+					'404' => 'Không tìm thấy loại tài liệu',
+					'503' => 'CPT, taxonomy hoặc ACF chưa hoạt động',
+				],
 			],
 
 			"$h/revalidation/status" => [
@@ -274,6 +367,87 @@ class Schema {
 			'flexible_block' => [
 				'layout' => 'string (ACF layout name)',
 				'data'   => 'object (normalized field values)',
+			],
+			'media_gallery_category' => [
+				'id'          => 'integer',
+				'slug'        => 'string',
+				'name'        => 'string',
+				'description' => 'string',
+				'count'       => 'integer',
+				'parent'      => 'integer',
+				'legacy_url'  => 'string',
+				'images_url'  => 'string',
+				'cover'       => 'media (chỉ có trong danh sách thư mục)',
+			],
+			'organization_category' => [
+				'id'          => 'integer',
+				'slug'        => 'string',
+				'name'        => 'string',
+				'description' => 'string',
+				'parent'      => 'integer',
+				'count'       => 'integer',
+				'link'        => 'string',
+			],
+			'organization_member' => [
+				'id'          => 'integer',
+				'slug'        => 'string',
+				'name'        => 'string',
+				'position'    => 'string (ACF chuc_vu)',
+				'description' => 'string',
+				'priority'    => 'integer|null (uu_tien_to_chuc)',
+				'link'        => 'string',
+				'avatar'      => 'media',
+				'initial'     => 'string',
+			],
+			'organization_profile' => [
+				'id'                 => 'integer',
+				'slug'               => 'string',
+				'name'               => 'string (ho_va_ten hoặc title)',
+				'primary_position'   => 'string (chuc_vu)',
+				'secondary_position' => 'string (chuc_vu_phu)',
+				'birth_year'         => 'string (nam_sinh)',
+				'hometown'           => 'string (que_quan)',
+				'qualification'      => 'string (trinh_do)',
+				'avatar'             => 'media',
+				'work_history'       => 'organization_work_history[]',
+				'biography'          => 'string (HTML an toàn)',
+			],
+			'organization_work_history' => [
+				'index'       => 'integer',
+				'side'        => 'left|right',
+				'date'        => 'string (ngay_thang_nam)',
+				'description' => 'string (mo_ta_qua_trinh)',
+			],
+			'document_banner' => [
+				'image'     => 'media',
+				'inherited' => 'boolean',
+				'term'      => '{ id, slug, name, parent }',
+			],
+			'document_item' => [
+				'index'               => 'integer',
+				'symbol'              => 'string (ky_hieu)',
+				'issued_date'         => 'string (YYYY-MM-DD)|null',
+				'issued_date_display' => 'string',
+				'title'               => 'string',
+				'file'                => 'media',
+			],
+			'document_archive_item' => [
+				'id'                  => 'integer',
+				'slug'                => 'string',
+				'title'               => 'string',
+				'symbol'              => 'string (ky_hieu)',
+				'issued_date'         => 'string (YYYY-MM-DD)|null',
+				'issued_date_display' => 'string',
+				'thumbnail'           => 'media',
+				'action'              => '{ type: file|detail, url, target, rel }',
+			],
+			'document_archive_group' => [
+				'category'   => 'term summary',
+				'items'      => 'document_archive_item[]',
+				'pagination' => '{ page, per_page, total, total_pages }',
+			],
+			'acf' => [
+				'description' => 'object: giá trị ACF đã chuẩn hóa theo loại field; có trong post/CPT chi tiết, archive item và term.',
 			],
 			'menu_item' => [
 				'id'        => 'integer',

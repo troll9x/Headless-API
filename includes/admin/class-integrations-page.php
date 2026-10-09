@@ -89,6 +89,22 @@ class Integrations_Page {
 				'notice_type'    => 'info',
 			],
 			[
+				'name'           => 'SonNH Media Gallery',
+				'active'         => $features['media_gallery'] && $features['media_gallery_taxonomy'],
+				'description'    => 'Cung cấp danh sách thư mục mlo-category và ảnh đã chuẩn hóa cho Next.js.',
+				'recommendation' => 'Kích hoạt SonNH Media Gallery và Media Library Organizer để dùng API /media-gallery/categories.',
+				'notice'         => null,
+				'notice_type'    => 'info',
+			],
+			[
+				'name'           => 'Son NH Template Gallery',
+				'active'         => $features['selected_gallery'] && $features['media_gallery_taxonomy'],
+				'description'    => 'Cung cấp danh mục, ảnh đã chọn và ảnh nổi bật của gallery trang chủ cho Next.js.',
+				'recommendation' => 'Kích hoạt Son NH Template Gallery và Media Library Organizer để dùng API /media-gallery/home.',
+				'notice'         => null,
+				'notice_type'    => 'info',
+			],
+			[
 				'name'           => 'WordPress REST API',
 				'active'         => true,
 				'description'    => 'WordPress REST API lõi hỗ trợ tất cả các endpoint của Headless API. Có sẵn từ WordPress 4.7.',

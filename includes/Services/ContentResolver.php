@@ -3,7 +3,7 @@
  * Content Resolver Service
  *
  * Resolves WordPress content by various selectors: ID, slug, path, URL.
- * Supports hierarchical post types and Permalink Manager integration.
+ * Supports hierarchical post types and native WordPress resolution.
  *
  * @package TLU_Headless_API
  */
@@ -12,7 +12,6 @@ namespace TLU_Headless_API\Services;
 
 use TLU_Headless_API\Contracts\Service;
 use TLU_Headless_API\Helpers\ContentVisibility;
-use TLU_Headless_API\Integrations\PermalinkManagerIntegration;
 use TLU_Headless_API\Integrations\PolylangIntegration;
 
 /**
@@ -20,23 +19,19 @@ use TLU_Headless_API\Integrations\PolylangIntegration;
  */
 final class ContentResolver implements Service {
 
-	private ?PermalinkManagerIntegration $permalink_manager;
 	private ?UrlTransformer $url_transformer;
 	private ?PolylangIntegration $polylang;
 
 	/**
 	 * Constructor.
 	 *
-	 * @param PermalinkManagerIntegration|null $permalink_manager Optional Permalink Manager integration.
 	 * @param UrlTransformer|null $url_transformer Optional URL transformer.
 	 * @param PolylangIntegration|null $polylang Optional Polylang integration.
 	 */
 	public function __construct(
-		?PermalinkManagerIntegration $permalink_manager = null,
 		?UrlTransformer $url_transformer = null,
 		?PolylangIntegration $polylang = null
 	) {
-		$this->permalink_manager = $permalink_manager;
 		$this->url_transformer   = $url_transformer ?? new UrlTransformer();
 		$this->polylang         = $polylang ?? new PolylangIntegration();
 	}
@@ -401,14 +396,6 @@ final class ContentResolver implements Service {
 
 		if ( empty( $post_types ) ) {
 			$post_types = $this->get_public_post_types();
-		}
-
-		// Try Permalink Manager first
-		if ( null !== $this->permalink_manager && $this->permalink_manager->is_active() ) {
-			$post_id = $this->permalink_manager->resolve_uri( '/' . $path . '/', $post_types );
-			if ( $post_id > 0 ) {
-				return $this->resolve_by_id( $post_id, $post_types );
-			}
 		}
 
 		// Try native WordPress resolution

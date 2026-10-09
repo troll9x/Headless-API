@@ -41,6 +41,10 @@ class AcfNormalizer {
 		string $type = 'text',
 		array $field = []
 	): mixed {
+		if ( $this->is_sensitive_field( $field ) ) {
+			return null;
+		}
+
 		switch ( $type ) {
 			case 'text':
 				return $this->normalize_text( $value );
@@ -144,7 +148,7 @@ class AcfNormalizer {
 				return null;
 
 			default:
-				return $value;
+				return $this->normalize_unknown( $value );
 		}
 	}
 
@@ -171,8 +175,8 @@ class AcfNormalizer {
 	}
 
 	private function normalize_oembed( $value ): array {
-		$url = is_scalar( $value ) ? esc_url_raw( trim( (string) $value ) ) : '';
-		if ( '' === $url ) {
+		$url = is_scalar( $value ) ? esc_url_raw( trim( (string) $value ), [ 'https' ] ) : '';
+		if ( '' === $url || ! $this->is_allowed_embed_url( $url ) ) {
 			return [ 'url' => '', 'html' => '' ];
 		}
 
@@ -185,21 +189,71 @@ class AcfNormalizer {
 	}
 
 	private function sanitize_embed_html( string $html ): string {
-		$allowed = wp_kses_allowed_html( 'post' );
-		$allowed['iframe'] = [
-			'allow'            => true,
-			'allowfullscreen'  => true,
-			'frameborder'      => true,
-			'height'           => true,
-			'loading'          => true,
-			'referrerpolicy'   => true,
-			'sandbox'          => true,
-			'src'              => true,
-			'title'            => true,
-			'width'            => true,
-		];
+		if ( ! preg_match( '/<iframe\b[^>]*\bsrc=(?:"([^"]+)"|\'([^\']+)\')[^>]*>/i', $html, $match ) ) {
+			return '';
+		}
 
-		return wp_kses( $html, $allowed );
+		$src = esc_url_raw( html_entity_decode( (string) ( $match[1] ?: $match[2] ), ENT_QUOTES, 'UTF-8' ), [ 'https' ] );
+		if ( '' === $src || ! $this->is_allowed_embed_url( $src ) ) {
+			return '';
+		}
+
+		$title = '';
+		if ( preg_match( '/\btitle=(?:"([^"]*)"|\'([^\']*)\')/i', $match[0], $title_match ) ) {
+			$title = sanitize_text_field( html_entity_decode( (string) ( $title_match[1] ?: $title_match[2] ), ENT_QUOTES, 'UTF-8' ) );
+		}
+
+		return sprintf(
+			'<iframe src="%1$s" title="%2$s" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-presentation" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>',
+			esc_url( $src ),
+			esc_attr( $title ?: 'Embedded media' )
+		);
+	}
+
+	private function is_sensitive_field( array $field ): bool {
+		$identity = strtolower( implode( ' ', [
+			(string) ( $field['name'] ?? '' ),
+			(string) ( $field['label'] ?? '' ),
+		] ) );
+
+		return 1 === preg_match( '/(?:^|[_\-\s])(password|passwd|secret|token|api[_\-\s]?key|private[_\-\s]?key|client[_\-\s]?secret)(?:$|[_\-\s])/i', $identity );
+	}
+
+	private function normalize_unknown( $value ): mixed {
+		if ( is_array( $value ) ) {
+			$result = [];
+			foreach ( array_slice( $value, 0, 500, true ) as $key => $item ) {
+				$safe_key = is_int( $key ) ? $key : sanitize_key( (string) $key );
+				$result[ $safe_key ] = $this->normalize_unknown( $item );
+			}
+			return $result;
+		}
+
+		return is_scalar( $value ) ? sanitize_text_field( (string) $value ) : null;
+	}
+
+	private function is_allowed_embed_url( string $url ): bool {
+		$parts = wp_parse_url( $url );
+		if ( ! is_array( $parts ) || 'https' !== strtolower( (string) ( $parts['scheme'] ?? '' ) ) ) {
+			return false;
+		}
+
+		$host = strtolower( (string) ( $parts['host'] ?? '' ) );
+		$allowed_hosts = (array) apply_filters( 'headless_api_allowed_embed_hosts', [
+			'youtube.com',
+			'youtube-nocookie.com',
+			'youtu.be',
+			'vimeo.com',
+		] );
+
+		foreach ( $allowed_hosts as $allowed_host ) {
+			$allowed_host = strtolower( trim( (string) $allowed_host ) );
+			if ( '' !== $allowed_host && ( $host === $allowed_host || str_ends_with( $host, '.' . $allowed_host ) ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private function normalize_choice( $value, array $field, bool $multiple ): array {

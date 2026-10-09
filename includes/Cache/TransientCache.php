@@ -7,6 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use TLU_Headless_API\Contracts\CacheInterface;
 use TLU_Headless_API\Config;
+use TLU_Headless_API\Services\CacheVersionStore;
 
 /**
  * Cache dựa trên WordPress transient.
@@ -27,8 +28,6 @@ class TransientCache implements CacheInterface {
 	private string $prefix;
 	private int    $default_ttl;
 	private bool   $enabled;
-
-	private const GENERATION_OPTION = 'tlu_headless_cache_generations';
 
 	public function __construct( string $prefix = 'headless_', int $default_ttl = 300, bool $enabled = true ) {
 		$this->prefix      = $prefix;
@@ -93,16 +92,9 @@ class TransientCache implements CacheInterface {
 	 * @param string $prefix Nhóm cache tùy chọn (page, blocks, seo, menu, options).
 	 */
 	public function flush( string $prefix = '' ): void {
-		$generations = $this->generations();
-		$group       = $this->normalize_group( $prefix );
-
-		if ( '' === $group ) {
-			$generations['global'] = (int) ( $generations['global'] ?? 1 ) + 1;
-		} else {
-			$generations[ $group ] = (int) ( $generations[ $group ] ?? 1 ) + 1;
-		}
-
-		update_option( self::GENERATION_OPTION, $generations, false );
+		$versions = new CacheVersionStore();
+		$group    = $this->normalize_group( $prefix );
+		$versions->bump( '' === $group ? 'global' : $this->generation_domain( $group ) );
 	}
 
 	/**
@@ -119,11 +111,11 @@ class TransientCache implements CacheInterface {
 	 */
 	public function make_key( string ...$parts ): string {
 		$group       = $this->normalize_group( $parts[0] ?? '' );
-		$generations = $this->generations();
+		$versions     = new CacheVersionStore();
 		$payload     = [
 			'schema'           => Config::schema_version(),
-			'global_generation'=> (int) ( $generations['global'] ?? 1 ),
-			'group_generation' => (int) ( $generations[ $group ] ?? 1 ),
+			'global_generation'=> $versions->get( 'global' ),
+			'group_generation' => $versions->get( $this->generation_domain( $group ) ),
 			'parts'            => array_values( $parts ),
 		];
 
@@ -136,13 +128,18 @@ class TransientCache implements CacheInterface {
 		return $this->prefix . $key;
 	}
 
-	private function generations(): array {
-		$value = \get_option( self::GENERATION_OPTION, [ 'global' => 1 ] );
-		return is_array( $value ) ? $value : [ 'global' => 1 ];
-	}
-
 	private function normalize_group( string $group ): string {
 		$group = sanitize_key( $group );
 		return str_starts_with( $group, 'menu' ) ? 'menu' : $group;
+	}
+
+	private function generation_domain( string $group ): string {
+		return match ( $group ) {
+			'menu'    => 'menus',
+			'options' => 'options',
+			'search'  => 'search',
+			'schema'  => 'schema',
+			default   => 'content',
+		};
 	}
 }

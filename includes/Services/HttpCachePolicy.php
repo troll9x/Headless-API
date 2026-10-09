@@ -21,7 +21,7 @@ final class HttpCachePolicy {
 		$this->cors = $cors ?? new CorsPolicy();
 	}
 
-	public function classify( WP_REST_Request $request, WP_REST_Response $response = null ): string {
+	public function classify( WP_REST_Request $request, ?WP_REST_Response $response = null ): string {
 		if ( ! $this->cors->is_plugin_route( $request->get_route() ) || $this->is_sensitive_request( $request ) ) {
 			return self::NO_STORE;
 		}

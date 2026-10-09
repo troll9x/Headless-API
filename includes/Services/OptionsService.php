@@ -25,10 +25,10 @@ class OptionsService {
 	private TransientCache      $cache;
 
 	public function __construct(
-		AcfIntegration      $acf        = null,
-		PolylangIntegration $polylang   = null,
-		AcfNormalizer       $normalizer = null,
-		TransientCache      $cache      = null
+		?AcfIntegration      $acf        = null,
+		?PolylangIntegration $polylang   = null,
+		?AcfNormalizer       $normalizer = null,
+		?TransientCache      $cache      = null
 	) {
 		$this->acf        = $acf        ?? new AcfIntegration();
 		$this->polylang   = $polylang   ?? new PolylangIntegration();

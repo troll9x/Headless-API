@@ -11,6 +11,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Sử dụng HMAC-SHA256 trên chuỗi: {timestamp}.{event_id}.{raw_body}
  */
 final class RevalidationSigner {
+	private RevalidationConfig $config;
+
+	public function __construct( ?RevalidationConfig $config = null ) {
+		$this->config = $config ?? new RevalidationConfig();
+	}
 
 	/**
 	 * Tính signature của một event.
@@ -22,6 +27,9 @@ final class RevalidationSigner {
 	 */
 	public function sign( string $raw_body, int $timestamp, string $event_id ): string {
 		$secret = $this->get_secret();
+		if ( '' === $secret ) {
+			return '';
+		}
 		$canonical = $timestamp . '.' . $event_id . '.' . $raw_body;
 		return base64_encode( hash_hmac( 'sha256', $canonical, $secret, true ) );
 	}
@@ -36,6 +44,9 @@ final class RevalidationSigner {
 	 */
 	public function sign_hex( string $raw_body, int $timestamp, string $event_id ): string {
 		$secret = $this->get_secret();
+		if ( '' === $secret ) {
+			return '';
+		}
 		$canonical = $timestamp . '.' . $event_id . '.' . $raw_body;
 		return hash_hmac( 'sha256', $canonical, $secret );
 	}
@@ -69,19 +80,6 @@ final class RevalidationSigner {
 	 * @return string Secret.
 	 */
 	private function get_secret(): string {
-		// Priority 1: Constant
-		if ( defined( 'TLU_HEADLESS_REVALIDATION_SECRET' ) ) {
-			return (string) TLU_HEADLESS_REVALIDATION_SECRET;
-		}
-
-		// Priority 2: Filter
-		$filtered = (string) apply_filters( 'headless_api_revalidation_secret', '' );
-		if ( '' !== $filtered ) {
-			return $filtered;
-		}
-
-		// Priority 3: Option
-		$options = \TLU_Headless_API\Config::options();
-		return $options['revalidation_secret'] ?? '';
+		return $this->config->secret();
 	}
 }

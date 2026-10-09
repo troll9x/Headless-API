@@ -22,9 +22,9 @@ class MenuService {
 	private TransientCache      $cache;
 
 	public function __construct(
-		PolylangIntegration $polylang   = null,
-		MenuNormalizer      $normalizer = null,
-		TransientCache      $cache      = null
+		?PolylangIntegration $polylang   = null,
+		?MenuNormalizer      $normalizer = null,
+		?TransientCache      $cache      = null
 	) {
 		$this->polylang   = $polylang   ?? new PolylangIntegration();
 		$this->normalizer = $normalizer ?? new MenuNormalizer();

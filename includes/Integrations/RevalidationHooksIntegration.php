@@ -8,6 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 use TLU_Headless_API\Services\RevalidationEventBuilder;
 use TLU_Headless_API\Services\RevalidationQueue;
 use TLU_Headless_API\Services\RevalidationDispatcher;
+use TLU_Headless_API\Services\RevalidationConfig;
 
 /**
  * Hook vào WordPress events để trigger revalidation webhooks.
@@ -54,6 +55,7 @@ final class RevalidationHooksIntegration {
 		add_action( 'added_option', [ $this, 'handle_option_change' ], 10, 3 );
 		add_action( 'updated_option', [ $this, 'handle_option_change' ], 10, 3 );
 		add_action( 'deleted_option', [ $this, 'handle_option_change' ], 10, 1 );
+		add_action( 'acf/save_post', [ $this, 'handle_acf_options_save' ], 30 );
 
 		// Cron worker
 		add_action( 'headless_api_process_revalidation_event', [ $this, 'process_event' ], 10, 2 );
@@ -176,12 +178,12 @@ final class RevalidationHooksIntegration {
 		];
 
 		// Build dummy post từ snapshot
-		$post = (object) [
+		$post = new \WP_Post( (object) [
 			'ID' => $post_id,
 			'post_type' => $snapshot['type'] ?? 'post',
 			'post_status' => $snapshot['status'] ?? 'publish',
 			'post_author' => $snapshot['author'] ?? 0,
-		];
+		] );
 
 		$this->enqueue_content_event( $event, $post, $context );
 
@@ -258,7 +260,7 @@ final class RevalidationHooksIntegration {
 		$this->enqueue_term_event( $event, $term_id, $taxonomy, $context );
 	}
 
-	public function handle_set_object_terms( int $object_id, array $terms, array $tt_ids, string $taxonomy, bool $append, array $old_tt_ids ): void {
+	public function handle_set_object_terms( int $object_id, $terms, array $tt_ids, string $taxonomy, bool $append, array $old_tt_ids ): void {
 		if ( ! $this->is_public_taxonomy( $taxonomy ) ) {
 			return;
 		}
@@ -278,8 +280,12 @@ final class RevalidationHooksIntegration {
 			'removed_terms' => $removed,
 		];
 
-		// Build term event từ object
-		$term = get_term( reset( $terms ), $taxonomy );
+		// WordPress accepts a scalar or array for $terms. Resolve the changed
+		// term through its term-taxonomy ID instead of assuming an array.
+		$changed_tt_ids = array_values( array_merge( $added, $removed ) );
+		$term = empty( $changed_tt_ids )
+			? false
+			: get_term_by( 'term_taxonomy_id', (int) $changed_tt_ids[0], $taxonomy );
 		if ( $term instanceof \WP_Term ) {
 			$this->enqueue_term_event( $event, $term->term_id, $taxonomy, $context );
 		}
@@ -287,7 +293,7 @@ final class RevalidationHooksIntegration {
 
 	// ── Options Event Handlers ─────────────────────────────────────────────────
 
-	public function handle_option_change( string $option, mixed $value, mixed $old_value = null ): void {
+	public function handle_option_change( string $option, mixed $value = null, mixed $old_value = null ): void {
 		// Chỉ xử lý allowlist options
 		$allowed_keys = $this->builder->get_allowed_option_keys();
 		if ( ! in_array( $option, $allowed_keys, true ) ) {
@@ -295,6 +301,20 @@ final class RevalidationHooksIntegration {
 		}
 
 		$this->enqueue_options_event( [ $option ] );
+	}
+
+	/** Invalidate the public partner carousel after an ACF options save. */
+	public function handle_acf_options_save( $post_id ): void {
+		if ( ! is_string( $post_id ) ) {
+			return;
+		}
+
+		$is_options = in_array( $post_id, [ 'option', 'options' ], true )
+			|| str_starts_with( $post_id, 'options_' )
+			|| str_ends_with( $post_id, '_options' );
+		if ( $is_options ) {
+			$this->enqueue_options_event( [ 'danh_sach_doi_tac' ] );
+		}
 	}
 
 	// ── Queue and Dispatch ─────────────────────────────────────────────────────
@@ -393,7 +413,7 @@ final class RevalidationHooksIntegration {
 	 * @param array $args Event args (không sử dụng).
 	 * @param string $job_id Job ID.
 	 */
-	public function process_event( $args, string $job_id ): void {
+	public function process_event( $args = [], string $job_id = '' ): void {
 		$queue = $this->queue;
 		$dispatcher = new RevalidationDispatcher();
 
@@ -461,7 +481,20 @@ final class RevalidationHooksIntegration {
 
 		// Internal post types
 		$post_type = get_post_type( $post_id );
-		if ( in_array( $post_type, [ 'revision', 'nav_menu_item', 'customize_changeset', 'oembed_cache', 'user_request', 'wp_global_styles', 'wp_navigation' ], true ) ) {
+		if ( in_array( $post_type, [
+			'revision',
+			'nav_menu_item',
+			'customize_changeset',
+			'oembed_cache',
+			'user_request',
+			'wp_global_styles',
+			'wp_navigation',
+			'acf-field-group',
+			'acf-field',
+			'acf-post-type',
+			'acf-taxonomy',
+			'acf-ui-options-page',
+		], true ) ) {
 			return true;
 		}
 
@@ -535,14 +568,9 @@ final class RevalidationHooksIntegration {
 		return '/' . ltrim( $path, '/' );
 	}
 
-	private function capture_post_for_deletion( int $post_id ): void {
+	public function capture_post_for_deletion( int $post_id ): void {
 		$post = get_post( $post_id );
-		if ( ! $post ) {
-			return;
-		}
-
-		// Skip internal types
-		if ( in_array( $post->post_type, [ 'revision', 'nav_menu_item', 'customize_changeset' ], true ) ) {
+		if ( ! $post || $this->should_skip_post( $post_id ) ) {
 			return;
 		}
 
@@ -576,27 +604,6 @@ final class RevalidationHooksIntegration {
 	}
 
 	private function is_revalidation_enabled(): bool {
-		// Check if URL and secret are configured
-		$url = defined( 'TLU_HEADLESS_REVALIDATION_URL' )
-			? (string) TLU_HEADLESS_REVALIDATION_URL
-			: '';
-		if ( '' === $url ) {
-			$url = (string) apply_filters( 'headless_api_revalidation_url', '' );
-		}
-		if ( '' === $url ) {
-			$url = \TLU_Headless_API\Config::options()['revalidation_url'] ?? '';
-		}
-
-		$secret = defined( 'TLU_HEADLESS_REVALIDATION_SECRET' )
-			? (string) TLU_HEADLESS_REVALIDATION_SECRET
-			: '';
-		if ( '' === $secret ) {
-			$secret = (string) apply_filters( 'headless_api_revalidation_secret', '' );
-		}
-		if ( '' === $secret ) {
-			$secret = \TLU_Headless_API\Config::options()['revalidation_secret'] ?? '';
-		}
-
-		return '' !== $url && '' !== $secret;
+		return ( new RevalidationConfig() )->is_configured();
 	}
 }
