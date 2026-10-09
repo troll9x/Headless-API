@@ -29,6 +29,11 @@ def sources() -> list[Path]:
     return result
 
 
+def source_bytes(path: Path) -> bytes:
+    """Normalize Windows checkouts to the same LF bytes used on Linux."""
+    return path.read_bytes().replace(b"\r\n", b"\n")
+
+
 def build(output: Path, files: list[Path]) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
@@ -37,7 +42,7 @@ def build(output: Path, files: list[Path]) -> None:
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
-            archive.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            archive.writestr(info, source_bytes(path), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
 
 
 def verify(output: Path, files: list[Path]) -> None:
@@ -47,7 +52,7 @@ def verify(output: Path, files: list[Path]) -> None:
         if actual != set(expected):
             raise SystemExit(f"ZIP manifest mismatch: missing={set(expected) - actual}, extra={actual - set(expected)}")
         for name, path in expected.items():
-            if archive.read(name) != path.read_bytes():
+            if archive.read(name) != source_bytes(path):
                 raise SystemExit(f"ZIP/source mismatch: {name}")
         if archive.testzip() is not None:
             raise SystemExit("ZIP integrity failure")
